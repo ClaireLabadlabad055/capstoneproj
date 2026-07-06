@@ -1,19 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system';
-import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import {
-  Alert,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text, TextInput, TouchableOpacity,
-  View
+import { 
+  View, Text, TextInput, TouchableOpacity, ScrollView, SafeAreaView, 
+  Platform, StyleSheet, StatusBar, Alert 
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { toByteArray } from 'base64-js';
 import { supabase } from '../lib/supabaseClient';
 import { COLORS } from '../styles/globalStyles';
 
@@ -64,15 +58,21 @@ export default function RegisterScreen() {
 
       // 3. Handle Role-Specific logic
       if (role === 'merchant') {
-        let docPath = null;
+        let finalDocPath = null;
+        
         if (verificationDoc) {
           const fileExt = verificationDoc.split('.').pop() || 'jpg';
-          docPath = `${authData.user.id}/proof.${fileExt}`;
-          const base64 = await FileSystem.readAsStringAsync(verificationDoc, { encoding: 'base64' });
+          finalDocPath = `${authData.user.id}/proof.${fileExt}`;
           
-          const { error: uploadError } = await supabase.storage
-            .from('verifications')
-            .upload(docPath, decode(base64), { contentType: `image/${fileExt}` });
+          const fileContent = await readAsStringAsync(verificationDoc, { 
+            encoding: EncodingType.Base64 
+          });
+        const { error: uploadError } = await supabase.storage
+          .from('verifications')
+          .upload(finalDocPath, toByteArray(fileContent), { 
+          contentType: `image/${fileExt}` 
+        });
+            
           if (uploadError) throw uploadError;
         }
 
@@ -83,12 +83,11 @@ export default function RegisterScreen() {
           barangay: barangay,
           pickup_landmark: pickupLandmark,
           landmark_details: landmarkDetails,
-          verification_doc_url: docPath,
+          verification_doc_url: finalDocPath,
         }]);
         if (merchantError) throw merchantError;
 
       } else {
-        // Customer specific insert
         const { error: customerError } = await supabase.from('customers').insert([{
           id: authData.user.id,
         }]);

@@ -1,23 +1,49 @@
-import React, { useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import QRCode from 'react-native-qrcode-svg';
-import { useCart } from '../../context/CartContext';
 import { COLORS } from '../../styles/globalStyles';
 import { Feather } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabaseClient'; // Ensure this path is correct
 
 export default function OrderSuccess() {
-  const { orders } = useCart();
   const router = useRouter();
-  
-  // ✅ 1. Get the specific checkoutId from the navigation params
   const { checkoutId } = useLocalSearchParams(); 
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // ✅ 2. Filter logic: Only show orders matching this specific checkout session
-  const latestOrders = useMemo(() => {
-    if (!checkoutId) return []; // Show nothing if no ID is passed
-    return orders.filter(o => o.checkoutId === checkoutId);
-  }, [orders, checkoutId]);
+  useEffect(() => {
+    const fetchOrder = async () => {
+      if (!checkoutId) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch the specific order from the database
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', checkoutId) // Assuming checkoutId is the row ID
+        .single();
+
+      if (data) {
+        setOrder(data);
+      } else {
+        console.error("Error fetching order:", error);
+      }
+      setLoading(false);
+    };
+
+    fetchOrder();
+  }, [checkoutId]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -30,61 +56,55 @@ export default function OrderSuccess() {
           </View>
           <Text style={styles.title}>Payment Successful!</Text>
           <Text style={styles.subtitle}>
-            Your order is ready. Show these QR codes to the vendors to claim your items.
+            Your order is ready. Show this QR code to the vendor to claim your items.
           </Text>
         </View>
 
-        {/* ✅ RENDERS ONLY THE NEW ORDERS */}
-        {latestOrders.length > 0 ? (
-          latestOrders.map((order) => (
-            <View key={order.id} style={styles.orderCard}>
-              <View style={styles.cardTop}>
-                <View>
-                  <Text style={styles.vendorName}>{order.vendorName}</Text>
-                  <Text style={styles.orderTime}>
-                    {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-                <View style={styles.methodBadge}>
-                  <Text style={styles.methodText}>{order.method?.toUpperCase()}</Text>
-                </View>
+        {order ? (
+          <View style={styles.orderCard}>
+            <View style={styles.cardTop}>
+              <View>
+                <Text style={styles.vendorName}>{order.vendor_name}</Text>
+                <Text style={styles.orderTime}>
+                  {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
               </View>
-
-              <View style={styles.qrSection}>
-                <View style={styles.qrWrapper}>
-                  <QRCode 
-                    // This data is what the Vendor App will scan
-                    value={JSON.stringify({ 
-                      orderId: order.id, 
-                      vendor: order.vendorName,
-                      customer: order.customerName 
-                    })} 
-                    size={150} 
-                    color={COLORS.secondary}
-                    backgroundColor="white"
-                  />
-                </View>
-                <Text style={styles.orderIdText}>REF: {order.id}</Text>
-              </View>
-
-              <View style={styles.dottedLine} />
-
-              <View style={styles.cardBottom}>
-                <View>
-                  <Text style={styles.label}>Items</Text>
-                  <Text style={styles.itemSummary}>
-                    {order.items?.length} {order.items?.length === 1 ? 'Item' : 'Items'}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.label}>Total</Text>
-                  <Text style={styles.totalValue}>₱{order.total?.toFixed(2)}</Text>
-                </View>
+              <View style={styles.methodBadge}>
+                <Text style={styles.methodText}>PAID</Text>
               </View>
             </View>
-          ))
+
+            <View style={styles.qrSection}>
+              <View style={styles.qrWrapper}>
+                <QRCode 
+                  value={JSON.stringify({ 
+                    orderId: order.id, 
+                    vendor: order.vendor_name 
+                  })} 
+                  size={150} 
+                  color={COLORS.secondary}
+                  backgroundColor="white"
+                />
+              </View>
+              <Text style={styles.orderIdText}>REF: {order.id.slice(-8).toUpperCase()}</Text>
+            </View>
+
+            <View style={styles.dottedLine} />
+
+            <View style={styles.cardBottom}>
+              <View>
+                <Text style={styles.label}>Items</Text>
+                <Text style={styles.itemSummary}>
+                  {order.item_count || 0} Items
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.label}>Total</Text>
+                <Text style={styles.totalValue}>₱{Number(order.total).toFixed(2)}</Text>
+              </View>
+            </View>
+          </View>
         ) : (
-          /* Fallback UI if someone navigates here directly */
           <View style={styles.emptyContainer}>
             <Feather name="alert-circle" size={50} color="#CCC" />
             <Text style={styles.emptyText}>No active order session found.</Text>

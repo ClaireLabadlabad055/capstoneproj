@@ -1,19 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, TextInput, SafeAreaView, StatusBar, StyleSheet, Dimensions, Modal } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, TextInput, SafeAreaView, StatusBar, StyleSheet, Dimensions } from 'react-native';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { supabase } from '../../lib/supabaseClient';
 
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
 import { useProducts } from '../../context/ProductContext'; 
 import { useVendor } from '../../context/VendorContext'; 
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.45;
 
 const CATEGORIES = ['All Vendors', 'Snacks', 'Sweets', 'Beverages', 'Meals'];
-const CAT_ICONS = {
+const CAT_ICONS: { [key: string]: string } = {
   'All Vendors': 'grid-outline',
   'Snacks': 'fast-food-outline',
   'Sweets': 'ice-cream-outline',
@@ -21,8 +22,7 @@ const CAT_ICONS = {
   'Meals': 'restaurant-outline'
 };
 
-// ✅ REUSABLE VENDOR CARD
-const VendorCard = ({ item, isSynced, liveProfile, onOpen }) => {
+const VendorCard = ({ item, isSynced, liveProfile, onOpen }: any) => {
   const displayName = isSynced ? liveProfile.name : item.name;
   const displayImage = isSynced 
     ? (typeof liveProfile.coverImage === 'string' ? { uri: liveProfile.coverImage } : liveProfile.coverImage)
@@ -56,8 +56,7 @@ const VendorCard = ({ item, isSynced, liveProfile, onOpen }) => {
   );
 };
 
-// ✅ REUSABLE PRODUCT CARD
-const ProductCard = ({ item, onPress }) => {
+const ProductCard = ({ item, onPress }: any) => {
   const { addToCart } = useCart();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -98,18 +97,54 @@ const ProductCard = ({ item, onPress }) => {
 
 export default function UserDashboard() {
   const { vendorProfile } = useVendor(); 
-  const { userProfile, addToCart } = useCart();
+  const { userProfile } = useCart();
   const { products } = useProducts(); 
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState('All Vendors');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState(null); 
+  const [selectedProduct, setSelectedProduct] = useState<any>(null); 
+  const [dbVendors, setDbVendors] = useState<any[]>([]);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      // Fetch Vendors
+      const { data: vendorData } = await supabase.from('merchants').select('*');
+      if (vendorData) {
+        const formatted = vendorData.map(v => ({
+          id: v.id,
+          name: v.business_name,
+          category: v.delicacy_type || 'General',
+          categoryType: v.delicacy_type || 'Others',
+          rating: '4.5',
+          distance: '1.2km',
+          image: v.verification_doc_url ? { uri: v.verification_doc_url } : require('../../assets/images/octo.png'),
+          isSynced: false
+        }));
+        setDbVendors(formatted);
+      }
+
+      // Safe fetch for Profile Image
+      const { data: sessionData } = await supabase.auth.getUser();
+      if (sessionData?.user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', sessionData.user.id)
+          .single();
+          
+        if (profileData?.avatar_url) setProfileImage(profileData.avatar_url);
+      }
+    };
+    fetchDashboardData();
+  }, []);
 
   const VENDORS = useMemo(() => [
     { id: 'v1', name: "Claire's Cookies", category: 'Bakery • Desserts', categoryType: 'Sweets', rating: '5.0', distance: '0.8km', image: require('../../assets/images/cst.jpg') },
+    ...dbVendors,
     { id: 'v2', name: vendorProfile.name, category: 'Streetfood • Snacks', categoryType: 'Snacks', rating: '4.9', distance: '1.2km', image: vendorProfile.coverImage, isSynced: true },
-  ], [vendorProfile]);
+  ], [vendorProfile, dbVendors]);
 
   const filteredVendors = useMemo(() => {
     return VENDORS.filter(vendor => {
@@ -120,7 +155,7 @@ export default function UserDashboard() {
   }, [VENDORS, activeTab, searchQuery]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(item => {
+    return products.filter((item: any) => {
       const matchesTab = activeTab === 'All Vendors' || item.itemTag === activeTab || item.category === activeTab;
       const matchesSearch = item.name?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesTab && matchesSearch;
@@ -132,8 +167,6 @@ export default function UserDashboard() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {/* --- HEADER --- */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity><Ionicons name="menu-outline" size={28} color={COLORS.secondary} /></TouchableOpacity>
@@ -142,140 +175,52 @@ export default function UserDashboard() {
             <Text style={styles.locationText} numberOfLines={1}>Toledo City, Cebu</Text>
           </View>
           <TouchableOpacity onPress={() => router.push('/customer/profile')}>
-             <View style={styles.profilePlaceholder}><Text style={styles.profileInitial}>{firstName[0]}</Text></View>
+            {profileImage ? (
+               <Image source={{ uri: profileImage }} style={styles.profilePlaceholder} />
+            ) : (
+               <View style={styles.profilePlaceholder}><Text style={styles.profileInitial}>{firstName[0]}</Text></View>
+            )}
           </TouchableOpacity>
         </View>
         <Text style={styles.welcomeText}>Hi {firstName}, <Text style={styles.orderLabelText}>Don't Wait, Order Your Food!</Text></Text>
       </View>
 
-      {/* --- MODIFIED SCROLLVIEW WITH PADDING FIX --- */}
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
-        contentContainerStyle={[styles.mainScroll, { paddingBottom: 120 }]}
-      >
-        
-        {/* --- SEARCH BAR --- */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.mainScroll, { paddingBottom: 120 }]}>
         <View style={styles.searchBar}>
           <Feather name="search" size={20} color="#AAA" />
-          <TextInput 
-            placeholder="Search delicacies..." 
-            style={styles.searchInput} 
-            value={searchQuery} 
-            onChangeText={setSearchQuery} 
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#CCC" />
-            </TouchableOpacity>
-          )}
+          <TextInput placeholder="Search delicacies..." style={styles.searchInput} value={searchQuery} onChangeText={setSearchQuery} />
         </View>
 
-        {/* --- CATEGORIES --- */}
         <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Categories</Text></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesList}>
           {CATEGORIES.map(cat => (
             <TouchableOpacity key={cat} onPress={() => setActiveTab(cat)} style={styles.categoryCard}>
               <View style={[styles.categoryIconBg, activeTab === cat && styles.categoryIconBgActive]}>
-                <Ionicons name={CAT_ICONS[cat]} size={24} color={activeTab === cat ? "#FFF" : COLORS.secondary} />
+                <Ionicons name={CAT_ICONS[cat] as any} size={24} color={activeTab === cat ? "#FFF" : COLORS.secondary} />
               </View>
               <Text style={[styles.categoryName, activeTab === cat && styles.categoryNameActive]}>{cat.split(' ')[0]}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* --- POPULAR ITEMS --- */}
         {filteredProducts.length > 0 && (
           <>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                {activeTab === 'All Vendors' ? '🔥 Popular Items' : `Delicious ${activeTab}`}
-              </Text>
-            </View>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>🔥 Popular Items</Text></View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularScroll}>
-              {filteredProducts.map(item => (
-                <ProductCard key={item.id} item={item} onPress={setSelectedProduct} />
-              ))}
+              {filteredProducts.map((item: any) => (<ProductCard key={item.id} item={item} onPress={setSelectedProduct} />))}
             </ScrollView>
           </>
         )}
 
-        {/* --- NEARBY VENDORS --- */}
         <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Nearby Vendors</Text></View>
         {filteredVendors.length > 0 ? (
-          filteredVendors.map(vendor => (
-            <VendorCard 
-              key={vendor.id} 
-              item={vendor} 
-              isSynced={vendor.isSynced}
-              liveProfile={vendorProfile}
-              onOpen={() => router.push({ 
-                pathname: '/customer/VendorDetails', 
-                params: { 
-                    ...vendor,
-                    image: vendor.isSynced 
-                        ? (typeof vendorProfile.coverImage === 'string' ? vendorProfile.coverImage : vendorProfile.coverImage.uri)
-                        : vendor.image
-                } 
-              })} 
-            />
+          filteredVendors.map((vendor: any) => (
+            <VendorCard key={vendor.id} item={vendor} isSynced={vendor.isSynced} liveProfile={vendorProfile} onOpen={() => router.push({ pathname: '/customer/VendorDetails', params: { ...vendor } })} />
           ))
         ) : (
-          <View style={styles.emptyContainer}>
-             <Text style={styles.emptyText}>No vendors found</Text>
-          </View>
+          <View style={styles.emptyContainer}><Text style={styles.emptyText}>No vendors found</Text></View>
         )}
       </ScrollView>
-
-      {/* --- PRODUCT MODAL --- */}
-      <Modal visible={!!selectedProduct} animationType="fade" transparent={false}>
-        <SafeAreaView style={styles.cleanModalContainer}>
-          {selectedProduct && (
-            <View style={{ flex: 1 }}>
-              <View style={styles.modalHeaderMinimal}>
-                <TouchableOpacity onPress={() => setSelectedProduct(null)}>
-                  <Ionicons name="chevron-back" size={28} color={COLORS.secondary} />
-                </TouchableOpacity>
-                <Text style={styles.modalHeaderTitle}>Product Details</Text>
-                <TouchableOpacity><Feather name="heart" size={22} color={COLORS.primary} /></TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                <Image 
-                  source={typeof selectedProduct.img === 'number' ? selectedProduct.img : { uri: selectedProduct.img.uri }} 
-                  style={styles.modalImageLarge} 
-                  resizeMode="contain"
-                />
-                <View style={styles.modalDetailsContent}>
-                  <View style={styles.modalPriceRow}>
-                    <Text style={styles.modalNameLarge}>{selectedProduct.name}</Text>
-                    <Text style={styles.modalPriceLarge}>₱{selectedProduct.price}</Text>
-                  </View>
-                  <Text style={styles.modalVendorName}>{selectedProduct.vendorName || "Vendor"}</Text>
-                  
-                  <View style={styles.modalBadgeRow}>
-                    <View style={styles.tagBadge}><Text style={styles.tagText}>{selectedProduct.itemTag}</Text></View>
-                    <View style={styles.sectionBadge}><Text style={styles.sectionText}>{selectedProduct.category}</Text></View>
-                  </View>
-
-                  <Text style={styles.modalLabel}>Description</Text>
-                  <Text style={styles.modalDescriptionText}>{selectedProduct.desc || "A delicious treat made with fresh ingredients."}</Text>
-                  
-                  <TouchableOpacity 
-                    style={styles.modalMainBtn} 
-                    onPress={() => {
-                      addToCart({...selectedProduct, qty: 1});
-                      setSelectedProduct(null);
-                    }}
-                  >
-                    <Text style={styles.modalMainBtnText}>Add to Cart • ₱{selectedProduct.price}</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          )}
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -291,7 +236,7 @@ const styles = StyleSheet.create({
   welcomeText: { fontSize: 18, color: COLORS.secondary, fontWeight: '800', marginTop: 15 },
   orderLabelText: { color: '#666', fontWeight: '400' },
   mainScroll: { paddingHorizontal: 20, paddingTop: 10, flexGrow: 1 },
-  searchBar: { flexDirection: 'row', backgroundColor: '#F8F9FA', borderRadius: 15, paddingHorizontal: 15, height: 50, alignItems: 'center', marginVertical: 15, zIndex: 10 },
+  searchBar: { flexDirection: 'row', backgroundColor: '#F8F9FA', borderRadius: 15, paddingHorizontal: 15, height: 50, alignItems: 'center', marginVertical: 15 },
   searchInput: { flex: 1, marginLeft: 10 },
   sectionHeader: { marginTop: 20, marginBottom: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
@@ -308,6 +253,7 @@ const styles = StyleSheet.create({
   popularItemName: { fontSize: 14, fontWeight: '800' },
   popularItemDesc: { fontSize: 10, color: '#AAA' },
   popularItemPrice: { fontSize: 15, fontWeight: '900', color: COLORS.primary },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
   addToCartSmallBtn: { backgroundColor: COLORS.secondary, width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', alignSelf: 'flex-end' },
   vendorCardVertical: { backgroundColor: '#FFF', borderRadius: 20, marginBottom: 20, elevation: 3, overflow: 'hidden' },
   vendorLargeImage: { width: '100%', height: 140 },
@@ -322,25 +268,5 @@ const styles = StyleSheet.create({
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   metaText: { fontSize: 12, color: '#666' },
   emptyContainer: { padding: 20, alignItems: 'center' },
-  emptyText: { color: '#AAA' },
-
-  // ✅ CLEAN MODAL STYLES
-  cleanModalContainer: { flex: 1, backgroundColor: '#FFF' },
-  modalHeaderMinimal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
-  modalHeaderTitle: { fontSize: 16, fontWeight: '700', color: COLORS.secondary },
-  modalImageLarge: { width: width, height: 300, backgroundColor: '#FFF' },
-  modalDetailsContent: { padding: 25 },
-  modalPriceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalNameLarge: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
-  modalPriceLarge: { fontSize: 24, fontWeight: '900', color: COLORS.primary },
-  modalVendorName: { fontSize: 14, color: COLORS.primary, fontWeight: '700', marginTop: 5 },
-  modalBadgeRow: { flexDirection: 'row', gap: 10, marginTop: 15 },
-  tagBadge: { backgroundColor: '#F0F0F0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  tagText: { fontSize: 11, fontWeight: '700', color: '#666' },
-  sectionBadge: { backgroundColor: '#FFF5F0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  sectionText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
-  modalLabel: { fontSize: 16, fontWeight: '800', color: COLORS.secondary, marginTop: 30 },
-  modalDescriptionText: { fontSize: 15, color: '#666', marginTop: 10, lineHeight: 24 },
-  modalMainBtn: { backgroundColor: COLORS.secondary, padding: 20, borderRadius: 20, alignItems: 'center', marginTop: 40, marginBottom: 20 },
-  modalMainBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' }
+  emptyText: { color: '#AAA' }
 });

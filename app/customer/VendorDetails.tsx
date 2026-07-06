@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, 
   Dimensions, SectionList, Modal, StatusBar 
@@ -10,6 +10,7 @@ import { useCart } from '../../context/CartContext';
 import { useProducts } from '../../context/ProductContext'; 
 import { useVendor } from '../../context/VendorContext'; 
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { supabase } from '../../lib/supabaseClient'; // Make sure this path is correct
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = (width - 50) / 2; 
@@ -47,7 +48,6 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
       </TouchableOpacity>
       
       <View style={styles.popularCardContent}>
-        {/* ✅ PROMO BADGE: Positioned inline so it never covers the name */}
         {item.orderType === 'Special Package' && (
           <View style={styles.promoBadgeInline}>
             <Text style={styles.promoBadgeText}>PROMO</Text>
@@ -55,7 +55,7 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
         )}
         
         <Text style={styles.popularItemName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.popularItemDesc} numberOfLines={1}>{item.desc || "Toledo's finest."}</Text>
+        <Text style={styles.popularItemDesc}>{item.product_description || "Toledo's finest."}</Text>
         
         <View style={styles.priceRow}>
           <Text style={styles.popularItemPrice}>₱{item.price}</Text>
@@ -77,23 +77,39 @@ export default function VendorDetails() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { addToCart } = useCart();
-  const { products } = useProducts(); 
+  const { products: contextProducts } = useProducts(); 
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [dbProducts, setDbProducts] = useState<any[]>([]);
 
-  // ✅ SYNC LOGIC: Checking if viewing own store
+  // Fetch products from database
+  useEffect(() => {
+    const fetchVendorProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('vendor_id', params.id);
+
+      if (data) setDbProducts(data);
+      if (error) console.error("Error fetching vendor products:", error);
+    };
+
+    if (params.id) fetchVendorProducts();
+  }, [params.id]);
+
+  // Combine DB products with existing context/mock products
+  const allProducts = [...dbProducts, ...contextProducts];
+
   const isTargetVendor = params.name === vendorProfile.name || params.id === "v2";
   const displayName = isTargetVendor ? vendorProfile.name : (params.name as string);
   const displayDesc = isTargetVendor ? vendorProfile.description : (params.description || "Fresh local delicacies.");
   const displayLoc = isTargetVendor ? vendorProfile.location : (params.location || "Toledo City, Cebu");
   
-  // RESTORED PARAMS
   const distance = params.distance || "1.2 km";
   const time = params.time || "15-20 mins";
   const rating = params.rating || "4.8";
 
-  // ✅ GROUPING LOGIC: Priority to Special Packages
   const groupedProducts = useMemo(() => {
-    const vendorProducts = products.filter(p => 
+    const vendorProducts = allProducts.filter(p => 
         p.vendorId === params.id || p.vendorName === displayName
     );
     
@@ -109,7 +125,7 @@ export default function VendorDetails() {
         data: vendorProducts.filter(p => p.orderType !== 'Special Package') 
       }
     ].filter(section => section.data.length > 0);
-  }, [products, params.id, displayName]);
+  }, [allProducts, params.id, displayName]);
 
   const handleAddItem = (product: any) => {
     addToCart({ ...product, vendorName: displayName || 'Vendor', qty: 1 });
@@ -122,8 +138,7 @@ export default function VendorDetails() {
         : vendorProfile.coverImage;
     }
     if (!params.image) return require('../../assets/images/cstbg.jpg');
-    const isNumber = !isNaN(Number(params.image));
-    return isNumber ? Number(params.image) : { uri: params.image as string };
+    return isNaN(Number(params.image)) ? { uri: params.image as string } : Number(params.image);
   };
 
   return (
@@ -155,18 +170,15 @@ export default function VendorDetails() {
               
               <Text style={styles.description}>{displayDesc}</Text>
               
-              {/* ✅ RESTORED METADATA ROW */}
               <View style={styles.statsRow}>
                 <View style={styles.statTag}>
                   <Ionicons name="star" size={14} color="#FFD700" />
                   <Text style={styles.statText}>{rating}</Text>
                 </View>
-
                 <View style={styles.statTag}>
                   <MaterialCommunityIcons name="map-marker-distance" size={14} color={COLORS.primary} />
                   <Text style={styles.statText}>{distance}</Text>
                 </View>
-
                 <View style={styles.statTag}>
                   <Feather name="clock" size={14} color="#4CAF50" />
                   <Text style={styles.statText}>{time}</Text>
@@ -204,7 +216,6 @@ export default function VendorDetails() {
         contentContainerStyle={{ paddingBottom: 120 }}
       />
 
-      {/* --- DETAIL MODAL --- */}
       <Modal visible={!!selectedProduct} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -259,38 +270,28 @@ const styles = StyleSheet.create({
   vendorName: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
   favBtn: { backgroundColor: '#F8F8F8', padding: 12, borderRadius: 50 },
   description: { fontSize: 13, color: '#666', marginTop: 10, lineHeight: 20 },
-  
-  // STATS
   statsRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
   statTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F6F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
   statText: { fontWeight: '800', color: COLORS.secondary, fontSize: 12 },
   locationDetail: { flexDirection: 'row', alignItems: 'center', marginTop: 15, gap: 5, paddingLeft: 2 },
   locationText: { fontSize: 12, color: '#888', fontWeight: '600' },
-
-  // SECTIONS
   sectionHeader: { paddingHorizontal: 25, marginTop: 35, marginBottom: 15 },
   sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
   accentLine: { width: 40, height: 4, backgroundColor: COLORS.primary, marginTop: 5, borderRadius: 2 },
-
-  // PRODUCT CARD
   gridRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 20 },
   popularCard: { width: CARD_WIDTH, backgroundColor: '#FFF', borderRadius: 24, elevation: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
   popularItemImg: { width: '100%', height: 120, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   soldOutOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   soldOutText: { color: COLORS.primary, fontWeight: '900', fontSize: 12 },
-  
   popularCardContent: { padding: 12 },
   promoBadgeInline: { alignSelf: 'flex-start', backgroundColor: '#FFF0F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 8 },
   promoBadgeText: { color: COLORS.primary, fontSize: 10, fontWeight: '900' },
-  
   popularItemName: { fontSize: 15, fontWeight: '800', color: COLORS.secondary },
   popularItemDesc: { fontSize: 10, color: '#AAA', marginTop: 3, marginBottom: 10 },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   popularItemPrice: { fontSize: 17, fontWeight: '900', color: COLORS.primary },
   addToCartSmallBtn: { backgroundColor: COLORS.secondary, width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-
-  // MODAL
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, height: height * 0.78, overflow: 'hidden' },
   modalImg: { width: '100%', height: 320 },
