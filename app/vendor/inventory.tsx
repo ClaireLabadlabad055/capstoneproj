@@ -1,14 +1,25 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, 
-  Dimensions, SectionList, Modal, StatusBar, TextInput, Alert, ScrollView 
-} from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { Stack, useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import {
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    SectionList,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useProducts } from '../../context/ProductContext';
+import { useVendor } from '../../context/VendorContext';
 import { COLORS } from '../../styles/globalStyles';
-import { useProducts } from '../../context/ProductContext'; 
-import { useVendor } from '../../context/VendorContext'; 
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 50) / 2;
@@ -107,7 +118,7 @@ export default function VendorInventory() {
               <View style={styles.imageOverlay} />
               <TouchableOpacity onPress={() => router.replace('/login')} style={styles.backBtn}><Ionicons name="arrow-back" size={22} color={COLORS.secondary} /></TouchableOpacity>
               <TouchableOpacity style={styles.cameraOverlay} onPress={async () => {
-                 let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 9], quality: 1 });
+                 let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 9], quality: 1 });
                  if (!result.canceled) updateProfile({ coverImage: result.assets[0].uri });
               }}><Feather name="camera" size={18} color="#FFF" /></TouchableOpacity>
             </View>
@@ -163,7 +174,7 @@ export default function VendorInventory() {
                 <Text style={styles.modalTitle}>New Product Entry</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <TouchableOpacity style={styles.productPhotoPicker} onPress={async () => {
-                         let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 1 });
+                         let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1 });
                          if (!result.canceled) setNewProductImage(result.assets[0].uri);
                     }}>
                         {newProductImage ? <Image source={{ uri: newProductImage }} style={styles.pickedImage} /> : (

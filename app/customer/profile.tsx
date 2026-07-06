@@ -1,121 +1,166 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, SafeAreaView, TouchableOpacity, 
-  ScrollView, TextInput, Alert, Switch, StatusBar, Image, Platform, ActivityIndicator 
-} from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { decode } from 'base64-arraybuffer';
 import * as ImagePicker from 'expo-image-picker';
-import { COLORS } from '../../styles/globalStyles';
-import { useCart } from '../../context/CartContext';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image, Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function Profile() {
   const router = useRouter();
-  const { userProfile, setUserProfile } = useCart();
+  const { user, userData, loading: authLoading, logout } = useAuth();
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [view, setView] = useState<'menu' | 'address' | 'settings'>('menu');
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
+  const [uploading, setUploading] = useState(false);
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
-  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const [tempAddress, setTempAddress] = useState({
-    name: userProfile?.name || "Claire Dela Cruz",
-    phone: "0912 345 6789",
+    name: userData?.name || "Claire Dela Cruz",
     details: "Poblacion, Toledo City, Cebu",
-    landmark: "Near Toledo City Science High School"
   });
 
   useEffect(() => {
-    fetchProfileData();
-  }, []);
+    const getActiveUser = async () => {
+      if (user?.id) {
+        setActiveUserId(user.id);
+        return;
+      }
 
-  const fetchProfileData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+      if (userData?.uid) {
+        setActiveUserId(userData.uid);
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        setActiveUserId(session.user.id);
+        return;
+      }
 
-    if (data) {
-      setProfileImage(data.avatar_url);
-      setTempAddress(prev => ({ ...prev, name: data.name || prev.name }));
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      if (!userError && authUser?.id) {
+        setActiveUserId(authUser.id);
+      }
+    };
+
+    getActiveUser();
+
+    if (userData?.avatar_url) {
+      setProfileImage(`${userData.avatar_url}?t=${new Date().getTime()}`);
     }
-  };
+  }, [user, userData]);
 
   const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow photo access.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.5,
+      quality: 0.7,
+      base64: true,
     });
 
-    if (!result.canceled) {
-      uploadAvatar(result.assets[0].uri);
-    }
-  };
-
-const uploadAvatar = async (uri: string) => {
-    setLoading(true);
-    try {
-      // 1. Use getSession() to check if a user is actually logged in
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session || !session.user) {
-        // Debugging log to see what's happening
-        console.log("No session found. Current session:", session);
-        Alert.alert("Error", "Your session has expired. Please log out and log in again.");
+    if (!result.canceled && result.assets?.length) {
+      const asset = result.assets[0];
+      if (!asset.base64) {
+        Alert.alert('Error', 'The selected image could not be read.');
         return;
       }
+      uploadAvatar(asset.base64);
+    }
+  };
 
-      const userId = session.user.id;
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const filePath = `${userId}/avatar.jpg`;
+  const uploadAvatar = async (base64: string) => {
+    setUploading(true);
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user?.id) {
+        throw new Error('You need to be signed in to upload a profile photo.');
+      }
 
-      // 2. Upload to Storage
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, blob, { upsert: true });
+      const currentUserId = session.user.id;
+      setActiveUserId(currentUserId);
 
-      if (uploadError) throw uploadError;
+      const filePath = `${currentUserId}/${Date.now()}.jpg`;
+      const fileBuffer = decode(base64);
+      const buckets = ['avatars', 'avatar', 'profile-images', 'images'];
 
-      // 3. Get Public URL
-      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-      
-      // 4. Update Database
-      await supabase.from('profiles').upsert({ id: userId, avatar_url: data.publicUrl });
-      
-      setProfileImage(data.publicUrl);
-      Alert.alert("Success", "Photo updated!");
+      let uploadedUrl: string | null = null;
+      let lastError: Error | null = null;
+
+      for (const bucketName of buckets) {
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(filePath, fileBuffer, {
+            contentType: 'image/jpeg',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          lastError = uploadError as Error;
+          continue;
+        }
+
+        const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+        if (publicData?.publicUrl) {
+          uploadedUrl = publicData.publicUrl;
+          break;
+        }
+
+        try {
+          const { data: signedData } = await supabase.storage.from(bucketName).createSignedUrl(filePath, 60 * 60 * 24);
+          if (signedData?.signedUrl) {
+            uploadedUrl = signedData.signedUrl;
+            break;
+          }
+        } catch (signedError) {
+          console.warn('Signed URL fallback failed', signedError);
+        }
+      }
+
+      if (!uploadedUrl) {
+        const message = lastError instanceof Error ? lastError.message : 'Unable to upload image to storage.';
+        throw new Error(message);
+      }
+
+      setProfileImage(`${uploadedUrl}?t=${new Date().getTime()}`);
+      Alert.alert('Success', 'Photo updated!');
     } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert("Error", "Could not upload photo. Check your connection.");
+      console.error(error);
+      const message = error instanceof Error ? error.message : 'Photo upload failed. Please check the storage bucket and database permissions.';
+      Alert.alert('Error', message);
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
-  const handleSave = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session || !session.user) {
-      Alert.alert("Error", "Session expired. Please login again.");
-      return;
-    }
-    await supabase.from('profiles').upsert({ id: session.user.id, name: tempAddress.name });
-    setUserProfile({ ...userProfile, name: tempAddress.name });
-    Alert.alert("Success", "Profile updated successfully!");
-    setView('menu');
-  };
+
+  if (authLoading) {
+    return <View style={styles.center}><ActivityIndicator size="large" /></View>;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
-      
       <View style={styles.whiteHeader}>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitleText}>
@@ -134,18 +179,16 @@ const uploadAvatar = async (uri: string) => {
           <View>
             <View style={styles.profileCard}>
               <View style={styles.avatarWrapper}>
-                {loading ? <ActivityIndicator /> : profileImage ? (
+                {uploading ? <ActivityIndicator /> : profileImage ? (
                   <Image source={{ uri: profileImage }} style={styles.avatarImage} />
                 ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Ionicons name="person" size={50} color="#D2B48C" />
-                  </View>
+                  <View style={styles.avatarPlaceholder}><Ionicons name="person" size={50} color="#D2B48C" /></View>
                 )}
                 <TouchableOpacity style={styles.cameraBtn} onPress={pickImage}>
                   <Feather name="camera" size={16} color="#FFF" />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.userName}>{tempAddress.name}</Text>
+              <Text style={styles.userName}>{userData?.name || "User"}</Text>
             </View>
 
             <View style={styles.menuContainer}>
@@ -157,25 +200,14 @@ const uploadAvatar = async (uri: string) => {
                 </View>
                 <Feather name="chevron-right" size={20} color="#CCC" />
               </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/customer/orders')}>
-                <View style={[styles.iconBg, {backgroundColor: '#F5F5F5'}]}><Feather name="shopping-bag" size={20} color="#4A342E" /></View>
-                <View style={styles.menuTextContent}>
-                  <Text style={styles.menuLabel}>My Orders</Text>
-                </View>
-                <Feather name="chevron-right" size={20} color="#CCC" />
-              </TouchableOpacity>
-
               <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={() => setView('settings')}>
                 <View style={[styles.iconBg, {backgroundColor: '#FAF9F6'}]}><Feather name="settings" size={20} color="#708090" /></View>
-                <View style={styles.menuTextContent}>
-                  <Text style={styles.menuLabel}>Account Settings</Text>
-                </View>
+                <View style={styles.menuTextContent}><Text style={styles.menuLabel}>Account Settings</Text></View>
                 <Feather name="chevron-right" size={20} color="#CCC" />
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.logoutBtn} onPress={() => router.replace('/login')}>
+            <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
               <Feather name="log-out" size={18} color="#FF3B30" />
               <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
@@ -186,7 +218,7 @@ const uploadAvatar = async (uri: string) => {
           <View style={styles.formCard}>
             <Text style={styles.inputLabel}>Full Name</Text>
             <TextInput style={styles.input} value={tempAddress.name} onChangeText={(t) => setTempAddress({...tempAddress, name: t})} />
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={() => setView('menu')}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
           </View>
         )}
 
@@ -206,6 +238,7 @@ const uploadAvatar = async (uri: string) => {
 }
 
 const styles = StyleSheet.create({
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1, backgroundColor: '#F9FBFC' },
   whiteHeader: { height: 60, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderBottomWidth: 1, borderColor: '#F0F0F0', marginTop: Platform.OS === 'android' ? 20 : 0 },
   headerTitleContainer: { position: 'absolute', left: 0, right: 0, justifyContent: 'center', alignItems: 'center' },

@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
-import { 
-  View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, 
-  Dimensions, ScrollView, TextInput, Alert, StatusBar, KeyboardAvoidingView, Platform 
-} from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, Stack } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker'; 
+import * as ImagePicker from 'expo-image-picker';
+import { Stack, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+    Alert,
+    Dimensions,
+    Image,
+    KeyboardAvoidingView, Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
 import { COLORS } from '../../styles/globalStyles';
 
 const { width } = Dimensions.get('window');
@@ -22,7 +32,7 @@ export default function VendorProfileEdit() {
   // ✅ LOGIC: Image Selection
   const pickCoverPhoto = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [16, 9],
       quality: 1,

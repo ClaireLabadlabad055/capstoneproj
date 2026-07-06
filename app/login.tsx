@@ -1,50 +1,58 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  StatusBar, 
-  SafeAreaView, 
-  KeyboardAvoidingView, 
-  Platform,
-  Alert,
-  ScrollView
-} from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { supabase } from '../lib/supabaseClient'; // Ensure this path points to your supabase client file
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password.");
       return;
     }
 
-    const lowerEmail = email.toLowerCase().trim();
+    setLoading(true);
 
-    // --- MULTI-ROLE NAVIGATION LOGIC ---
-    if (lowerEmail.includes('admin')) {
-      router.replace('/admin/home'); 
-    } 
-    else if (lowerEmail.includes('vendor')) {
-      router.replace('/vendor/home'); 
-    } 
-    else {
-      router.replace('/customer/home'); 
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password: password,
+    });
+
+    if (error) {
+      Alert.alert("Login Failed", error.message);
+      setLoading(false);
+      return;
     }
+
+    if (data?.session) {
+      await supabase.auth.setSession(data.session);
+    }
+
+    setLoading(false);
+    router.replace('/customer/home');
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9F9FB" />
       
-      {/* 🏹 FLOATING BACK BUTTON Bubble */}
       <TouchableOpacity 
         onPress={() => router.back()} 
         style={styles.floatingBackBtn}
@@ -62,17 +70,14 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContainer}
           >
-            {/* Spacer ensuring clear separation below the floating button layer */}
             <View style={{ height: 170 }} />
               
-            {/* Left-Aligned Header Section to match Register exactly */}
             <View style={styles.header}>
               <Text style={styles.title}>Welcome Back</Text>
               <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
               <View style={styles.brandLine} />
             </View>
 
-            {/* --- FORM SECTION --- */}
             <View style={styles.form}>
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email Address</Text>
@@ -106,17 +111,18 @@ export default function LoginScreen() {
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 
-              {/* Primary brand brown submit button */}
               <TouchableOpacity 
                 style={styles.submitBtn} 
                 onPress={handleLogin}
                 activeOpacity={0.8}
+                disabled={loading}
               >
-                <Text style={styles.submitBtnText}>LOG IN</Text>
+                <Text style={styles.submitBtnText}>
+                  {loading ? "LOGGING IN..." : "LOG IN"}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Footer Section */}
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
               <TouchableOpacity onPress={() => router.push('/register')}>
@@ -153,7 +159,7 @@ const styles = StyleSheet.create({
   },
   header: { 
     marginBottom: 24,
-    alignItems: 'flex-start' // Aligns text entirely to the left
+    alignItems: 'flex-start' 
   },
   title: { 
     color: '#1A202C', 
@@ -175,7 +181,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#A05C2C', 
     borderRadius: 2, 
     marginTop: 12,
-    alignSelf: 'flex-start' // Aligns the indicator bar to the left edge
+    alignSelf: 'flex-start' 
   },
   form: { width: '100%' },
   inputGroup: {

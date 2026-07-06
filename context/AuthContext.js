@@ -8,26 +8,39 @@ export const AuthProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // This helper function ensures the logic is centralized
+  const handleAuthStateChange = async (session) => {
+    if (session) {
+      setUser(session.user);
+      // Fetch role (Vendor/Customer) from Supabase
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      
+      if (data && !error) {
+        setUserData(data);
+      } else {
+        setUserData(null);
+      }
+    } else {
+      setUser(null);
+      setUserData(null);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
+    // 1. Force a check immediately on load to recover session from AsyncStorage
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleAuthStateChange(session);
+    });
+
+    // 2. Listen for future changes (login, logout, refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session) {
-          setUser(session.user);
-          // Fetch role (Vendor/Customer) from Supabase
-          const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('uid', session.user.id)
-            .single();
-          
-          if (data && !error) {
-            setUserData(data);
-          }
-        } else {
-          setUser(null);
-          setUserData(null);
-        }
-        setLoading(false);
+        handleAuthStateChange(session);
       }
     );
     
@@ -35,22 +48,34 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const register = async (email, password, name, role) => {
-    // Sign up user with Supabase
     const { data, error } = await supabase.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        emailRedirectTo: undefined,
+      }
     });
     
     if (error) throw new Error(error.message);
+
+    const userId = data?.user?.id;
+    if (!userId) throw new Error('Unable to create account.');
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) throw new Error(signInError.message);
     
-    // Save additional info to Supabase
-    await supabase.from('users').insert([
+    await supabase.from('customers').insert([
       {
-        uid: data.user.id,
-        name,
+        id: userId,
+        full_name: name,
         email,
-        role, // "vendor" or "customer"
-        created_at: new Date()
+        role,
+        created_at: new Date().toISOString(),
+        avatar_url: null
       }
     ]);
   };
@@ -67,7 +92,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, userData, login, register, logout, loading }}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
-import { 
-  View, Text, TextInput, TouchableOpacity, ScrollView, SafeAreaView, 
-  Platform, StyleSheet, StatusBar, Alert 
-} from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { toByteArray } from 'base64-js';
+import { EncodingType, readAsStringAsync } from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+    Alert,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text, TextInput, TouchableOpacity,
+    View
+} from 'react-native';
 import { supabase } from '../lib/supabaseClient';
 import { COLORS } from '../styles/globalStyles';
 
@@ -30,7 +36,7 @@ export default function RegisterScreen() {
 
   const pickDocument = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ 
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, 
+      mediaTypes: ['images'], 
       allowsEditing: true, 
       quality: 0.7 
     });
