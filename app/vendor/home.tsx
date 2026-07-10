@@ -1,17 +1,33 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert, Platform, Image, LayoutAnimation, UIManager } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert, Platform, UIManager, LayoutAnimation, Linking } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../styles/globalStyles'; 
-import { useCart } from '../../context/CartContext'; 
+import { useAuth } from '../../context/AuthContext';
+import { useVendor } from '../../context/VendorContext';
+import { useCart } from '../../context/CartContext';
+import { supabase } from '../../lib/supabaseClient';
 
-// Enable LayoutAnimation for smooth expanding/collapsing on Android
+// --- TYPES ---
+type OrderItem = { name: string; qty: number; price: number };
+type Order = {
+  id: string;
+  status: string;
+  total: number | string;
+  items: OrderItem[];
+  customerName?: string;
+  customerPhone?: string | null;
+  customer_name?: string;
+  vendorName?: string;
+  user_id?: string;
+};
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- COLLAPSIBLE CARD COMPONENT (No changes here) ---
-const CollapsibleOrderCard = ({ order, onStatusChange }) => {
+// --- COLLAPSIBLE CARD COMPONENT ---
+const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatusChange: (id: string, status: string) => void }) => {
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpand = () => {
@@ -19,33 +35,34 @@ const CollapsibleOrderCard = ({ order, onStatusChange }) => {
     setExpanded(!expanded);
   };
 
-  const handleLongPressContact = () => {
-    Alert.alert(
-      "Contact Customer",
-      `Would you like to call ${order.customerName || 'the customer'}?`,
-      [{ text: "Cancel", style: "cancel" }, { text: "Call", onPress: () => console.log("Calling...") }]
-    );
+  const handleCall = () => {
+    if (!order.customerPhone) return Alert.alert('No phone number', 'Customer phone number not available');
+    Linking.openURL(`tel:${order.customerPhone}`);
+  };
+
+  const handleMessage = () => {
+    if (!order.customerPhone) return Alert.alert('No phone number', 'Customer phone number not available');
+    Linking.openURL(`sms:${order.customerPhone}`);
   };
 
   return (
     <View style={[styles.orderCard, SHADOWS?.small]}>
       <View style={styles.orderCardHeader}>
         <View>
-          <Text style={styles.orderID}>ORD-{order.id.substring(0, 5).toUpperCase()}</Text>
-          <TouchableOpacity onLongPress={handleLongPressContact} delayLongPress={800}>
-            <Text style={styles.customerSub}>
-              {order.customerName || 'Guest Customer'} <Feather name="phone" size={10} color="#AAA" />
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.orderID}>ORD-{order.id.toString().substring(0, 5).toUpperCase()}</Text>
+          <Text style={styles.customerSub}>{order.customerName || order.customer_name || 'Guest Customer'}</Text>
         </View>
-        <View style={styles.headerRightContainer}>
-          <Text style={styles.timerText}>3m ago</Text> 
-          <View style={[styles.statusPill, { 
-            backgroundColor: order.status === 'Preparing' ? '#FEF3C7' : '#DCFCE7' 
-          }]}>
-            <Text style={[styles.statusPillText, { 
-              color: order.status === 'Preparing' ? '#B45309' : '#15803D' 
-            }]}>{order.status}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={handleCall} style={{ padding: 6 }}>
+            <Feather name="phone" size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleMessage} style={{ padding: 6 }}>
+            <Feather name="message-square" size={18} color={COLORS.secondary} />
+          </TouchableOpacity>
+          <View style={styles.statusPill}>
+            <View style={[styles.statusPill, { backgroundColor: order.status === 'Preparing' ? '#FEF3C7' : '#DCFCE7' }]}>
+              <Text style={[styles.statusPillText, { color: order.status === 'Preparing' ? '#B45309' : '#15803D' }]}>{order.status}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -53,32 +70,22 @@ const CollapsibleOrderCard = ({ order, onStatusChange }) => {
       <TouchableOpacity onPress={toggleExpand} activeOpacity={0.9}>
         <View style={styles.itemSummary}>
           <Text style={styles.summaryText}>
-            <Text style={styles.summaryQty}>{order.items[0].qty}x</Text> {order.items[0].name}
+            <Text style={styles.summaryQty}>{order.items[0]?.qty}x</Text> {order.items[0]?.name}
           </Text>
-
           {expanded && order.items.slice(1).map((item, i) => (
-            <Text key={i} style={styles.summaryText}>
-              <Text style={styles.summaryQty}>{item.qty}x</Text> {item.name}
-            </Text>
+            <Text key={i} style={styles.summaryText}><Text style={styles.summaryQty}>{item.qty}x</Text> {item.name}</Text>
           ))}
-
-          {!expanded && order.items.length > 1 && (
-            <Text style={styles.moreItemsText}>+ {order.items.length - 1} more items (Tap to view)</Text>
-          )}
+          {!expanded && order.items.length > 1 && <Text style={styles.moreItemsText}>+ {order.items.length - 1} more items (Tap to view)</Text>}
         </View>
       </TouchableOpacity>
 
       <View style={styles.orderFooter}>
-        <Text style={styles.orderTotalText}>₱{order.total}</Text>
+        <Text style={styles.orderTotalText}>₱{Number(order.total).toFixed(2)}</Text>
         <TouchableOpacity 
-          style={[styles.actionBtn, { 
-            backgroundColor: order.status === 'Preparing' ? COLORS.primary : COLORS.secondary 
-          }]}
-          onPress={() => onStatusChange(order.id, order.status)}
-        >
-          <Text style={styles.actionBtnText}>
-            {order.status === 'Preparing' ? 'Ready to Pick-up' : 'Complete Order'}
-          </Text>
+          style={[styles.actionBtn, { backgroundColor: order.status === 'Preparing' ? COLORS.primary : COLORS.secondary }]}
+            onPress={() => onStatusChange(order.id, order.status)}
+          >
+            <Text style={styles.actionBtnText}>{order.status === 'Preparing' ? 'Ready to Meet Up' : 'Complete Order'}</Text>
           <Feather name="check-circle" size={16} color="#FFF" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
       </View>
@@ -86,144 +93,137 @@ const CollapsibleOrderCard = ({ order, onStatusChange }) => {
   );
 };
 
-// ... (All imports and CollapsibleOrderCard stay exactly the same)
-
 export default function VendorDashboard() {
   const router = useRouter();
-  const { orders, updateOrderStatus } = useCart();
-  
-  const handleLogout = () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to exit your dashboard?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Logout", 
-          style: "destructive", 
-          onPress: () => router.replace('/login') 
+  const { vendorProfile } = useVendor();
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    if (!vendorProfile?.name) return;
+
+    const fetchOrders = async () => {
+      try {
+        console.log('VendorDashboard: fetching orders for vendor:', vendorProfile.name, 'id:', vendorProfile?.id);
+
+        // 1) orders where vendor_name matches
+        const { data: byName, error: errName } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('vendor_name', vendorProfile.name)
+          .order('created_at', { ascending: false });
+        if (errName) console.warn('Vendor orders fetch by name error:', errName);
+
+        // 2) orders where items JSON contains this vendor id (text search)
+        let byItems = [];
+        if (vendorProfile?.id) {
+          try {
+            const { data: itemsData, error: errItems } = await supabase
+              .from('orders')
+              .select('*')
+              .ilike('items', `%${vendorProfile.id}%`)
+              .order('created_at', { ascending: false });
+            if (errItems) console.warn('Vendor orders fetch by items error:', errItems);
+            byItems = itemsData || [];
+          } catch (e) {
+            console.warn('Error fetching orders by items:', e);
+          }
         }
-      ]
-    );
+
+        const combined = [...(byName || []), ...byItems];
+        // dedupe by id
+        const unique = Array.from(new Map(combined.map((o: any) => [o.id, o])).values());
+        console.log('Vendor orders fetched byName:', (byName || []).length, 'byItems:', byItems.length, 'unique:', unique.length);
+
+        // Fetch customer profiles for any orders that have user_id so we can show phone numbers
+        const userIds = Array.from(new Set(unique.map(o => o.user_id).filter(Boolean)));
+        let profiles: any[] = [];
+        if (userIds.length > 0) {
+          try {
+            const { data: pData, error: pErr } = await supabase.from('profiles').select('id, full_name, phone').in('id', userIds);
+            if (pErr) console.warn('Profiles fetch error', pErr);
+            profiles = pData || [];
+          } catch (e) {
+            console.warn('Profiles fetch exception', e);
+          }
+        }
+
+        const mapped = unique.map((o: any) => {
+          const prof = (profiles as any[]).find((p: any) => p.id === o.user_id);
+          return {
+            ...o,
+            customerName: o.customer_name || (prof?.full_name) || o.customerName || 'Guest Customer',
+            customerPhone: prof?.phone || o.customerPhone || null,
+          };
+        });
+
+        setOrders(mapped as Order[]);
+      } catch (e) {
+        console.error('Fetch orders exception:', e);
+      }
+    };
+
+    fetchOrders();
+
+    const channel = supabase.channel('realtime-orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+        console.log('Realtime orders event:', payload);
+        fetchOrders();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [vendorProfile?.name]);
+
+  const handleStatusTransition = async (orderId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'Preparing' ? 'Ready' : 'Completed';
+    await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
   };
 
-  const vendorOrders = useMemo(() => {
-    return (orders || []).filter(o => 
-      o.vendorName?.toLowerCase().trim() === "takoyaki corner".toLowerCase().trim()
-    );
-  }, [orders]);
-
-  const activeOrders = vendorOrders.filter(o => o.status !== 'Completed' && o.status !== 'Cancelled');
-  const completedOrders = vendorOrders.filter(o => o.status === 'Completed');
-
-  const totalSales = useMemo(() => {
-    return completedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-  }, [completedOrders]);
-
-  const handleStatusTransition = (orderId, currentStatus) => {
-    let nextStatus = '';
-    if (currentStatus === 'Preparing') nextStatus = 'Ready';
-    else if (currentStatus === 'Ready') nextStatus = 'Completed';
-    if (nextStatus) updateOrderStatus(orderId, nextStatus);
-  };
+  const activeOrders = orders.filter(o => o.status !== 'Completed');
+  const completedOrders = orders.filter(o => o.status === 'Completed');
+  const totalSales = completedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.welcomeText}>March 2026 • Live Dashboard</Text>
-            <Text style={styles.storeName}>Takoyaki Corner</Text>
+            <Text style={styles.welcomeText}>LIVE DASHBOARD</Text>
+            <Text style={styles.storeName}>{vendorProfile?.name || 'Your Kitchen'}</Text>
           </View>
-          
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.logoutIconBtn} onPress={handleLogout}>
-              <Feather name="log-out" size={18} color="rgba(255,255,255,0.7)" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.profileBtn}>
-              
-              
-              {/* ✅ FIXED: Changed <div> to <View> below */}
-              <View style={styles.onlineBadge} /> 
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={() => Alert.alert("Logout", "Exit dashboard?", [{text: "Logout", style: "destructive", onPress: () => router.replace('/login')}])}>
+            <Feather name="log-out" size={20} color="#FFF" />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* ... All existing statsGrid, toolGrid, and Queue logic stays exactly the same ... */}
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.statsGrid}>
-          <View style={[styles.mainStat, SHADOWS?.medium]}>
-            <View style={styles.statIconCircle}>
-              <Feather name="trending-up" size={20} color={COLORS.primary} />
-            </View>
+          <View style={styles.mainStat}>
             <Text style={styles.mainStatValue}>₱{totalSales.toLocaleString()}</Text>
             <Text style={styles.mainStatLabel}>Gross Revenue</Text>
           </View>
-          
           <View style={styles.sideStats}>
-            <View style={[styles.smallStat, { backgroundColor: COLORS.secondary }]}>
-              <Text style={styles.smallStatNum}>{activeOrders.length}</Text>
-              <Text style={styles.smallStatLabel}>Active</Text>
-            </View>
-            <View style={[styles.smallStat, { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEE' }]}>
-              <Text style={[styles.smallStatNum, { color: COLORS.secondary }]}>{completedOrders.length}</Text>
-              <Text style={[styles.smallStatLabel, { color: '#888' }]}>Done</Text>
-            </View>
+            <View style={[styles.smallStat, { backgroundColor: COLORS.secondary }]}><Text style={styles.smallStatNum}>{activeOrders.length}</Text><Text style={styles.smallStatLabel}>Active</Text></View>
           </View>
         </View>
 
         <Text style={styles.sectionTitle}>Management Tools</Text>
         <View style={styles.toolGrid}>
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/inventory')}>
-            <View style={[styles.toolIcon, { backgroundColor: '#EFEFFD' }]}>
-              <MaterialCommunityIcons name="layers-outline" size={24} color="#5C5CFF" />
-            </View>
-            <Text style={styles.toolText}>Inventory</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/scanner')}>
-            <View style={[styles.toolIcon, { backgroundColor: '#FFF5F0' }]}>
-              <MaterialCommunityIcons name="qrcode-scan" size={24} color={COLORS.primary} />
-            </View>
-            <Text style={styles.toolText}>Scanner</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/reports')}>
-            <View style={[styles.toolIcon, { backgroundColor: '#F0FDF4' }]}>
-              <Feather name="bar-chart-2" size={24} color="#22C55E" />
-            </View>
-            <Text style={styles.toolText}>Reports</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/inventory')}><View style={styles.toolIcon}><MaterialCommunityIcons name="layers-outline" size={24} color="#5C5CFF" /></View><Text style={styles.toolText}>Inventory</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/scanner')}><View style={styles.toolIcon}><MaterialCommunityIcons name="qrcode-scan" size={24} color={COLORS.primary} /></View><Text style={styles.toolText}>Scanner</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/reports')}><View style={styles.toolIcon}><Feather name="bar-chart-2" size={24} color="#22C55E" /></View><Text style={styles.toolText}>Reports</Text></TouchableOpacity>
         </View>
 
-        <View style={styles.queueHeader}>
-          <Text style={styles.sectionTitle}>Live Queue</Text>
-          {activeOrders.length > 0 && (
-            <View style={styles.orderCountBadge}>
-              <Text style={styles.orderCountText}>{activeOrders.length} Orders</Text>
-            </View>
-          )}
-        </View>
-        
+        <Text style={styles.sectionTitle}>Live Queue</Text>
         {activeOrders.length > 0 ? (
-          activeOrders.map((order) => (
-            <CollapsibleOrderCard 
-              key={order.id} 
-              order={order} 
-              onStatusChange={handleStatusTransition} 
-            />
-          ))
+          activeOrders.map((order) => <CollapsibleOrderCard key={order.id} order={order} onStatusChange={handleStatusTransition} />)
         ) : (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIllustration}>
-              <Feather name="coffee" size={40} color="#DDD" />
-            </View>
+          <View style={styles.emptyQueueContainer}>
+            <MaterialCommunityIcons name="coffee-outline" size={48} color="#CBD5E1" />
             <Text style={styles.emptyTitle}>Kitchen is Quiet</Text>
-            <Text style={styles.emptySub}>New orders will appear here in real-time.</Text>
+            <Text style={styles.emptySubtitle}>New orders will appear here automatically.</Text>
           </View>
         )}
       </ScrollView>
@@ -231,68 +231,41 @@ export default function VendorDashboard() {
   );
 }
 
-// ... (All styles remain exactly the same)
-
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FBFCFE' },
-  header: { 
-    backgroundColor: COLORS.secondary, 
-    paddingTop: Platform.OS === 'ios' ? 60 : 50, 
-    paddingBottom: 35, 
-    paddingHorizontal: 25, 
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  header: { backgroundColor: COLORS.secondary, paddingTop: 60, paddingBottom: 30, paddingHorizontal: 25, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  
-  // ✅ NEW HEADER ACTION STYLES
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoutIconBtn: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-
-  welcomeText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2 },
-  storeName: { color: '#FFF', fontSize: 28, fontWeight: '900', marginTop: 4 },
-  storeMiniImg: { width: '100%', height: '100%', borderRadius: 16 },
+  welcomeText: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
+  storeName: { color: '#FFF', fontSize: 28, fontWeight: '800', marginTop: 4 },
   content: { padding: 20 },
-  statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 30, marginTop: -15 },
-  mainStat: { flex: 1.5, backgroundColor: '#FFF', padding: 20, borderRadius: 28, justifyContent: 'center' },
-  statIconCircle: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF5F0', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  mainStatValue: { fontSize: 24, fontWeight: '900', color: COLORS.secondary },
-  mainStatLabel: { fontSize: 12, color: '#888', fontWeight: '600', marginTop: 2 },
-  sideStats: { flex: 1, gap: 10 },
-  smallStat: { flex: 1, padding: 15, borderRadius: 20, justifyContent: 'center' },
+  statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
+  mainStat: { flex: 2, backgroundColor: '#FFF', padding: 20, borderRadius: 20, ...SHADOWS.small, borderWidth: 1, borderColor: '#F1F5F9' },
+  mainStatValue: { fontSize: 20, fontWeight: '900', color: COLORS.secondary },
+  mainStatLabel: { fontSize: 12, color: '#64748B', marginTop: 4 },
+  sideStats: { flex: 1 },
+  smallStat: { flex: 1, padding: 15, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   smallStatNum: { fontSize: 18, fontWeight: '900', color: '#FFF' },
-  smallStatLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginTop: 2, color: 'rgba(255,255,255,0.8)' },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary, marginBottom: 15 },
-  toolGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 35 },
-  toolItem: { alignItems: 'center', width: '30%' },
-  toolIcon: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  toolText: { fontSize: 12, fontWeight: '700', color: '#666' },
-  queueHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  orderCountBadge: { backgroundColor: COLORS.secondary, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
-  orderCountText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-  orderCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#F0F0F0' },
-  orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
-  headerRightContainer: { alignItems: 'flex-end' },
-  timerText: { fontSize: 11, color: '#AAA', fontWeight: '700', marginBottom: 4 },
-  orderID: { fontSize: 15, fontWeight: '900', color: COLORS.secondary },
-  customerSub: { fontSize: 13, color: '#888', fontWeight: '500' },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  statusPillText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  itemSummary: { backgroundColor: '#FAFAFA', borderRadius: 15, padding: 12, marginBottom: 15 },
-  summaryText: { fontSize: 14, color: COLORS.secondary, fontWeight: '600', marginBottom: 4 },
+  smallStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '700', marginTop: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 15, marginTop: 10 },
+  toolGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, paddingHorizontal: 5 },
+  toolItem: { alignItems: 'center', width: '30%', backgroundColor: '#FFF', paddingVertical: 15, borderRadius: 20, ...SHADOWS.small, borderWidth: 1, borderColor: '#F1F5F9' },
+  toolIcon: { width: 65, height: 65, borderRadius: 22, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  toolText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  orderCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0' },
+  orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  orderID: { fontWeight: '900', color: '#1E293B' },
+  customerSub: { color: '#64748B', fontSize: 13 },
+  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  statusPillText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  itemSummary: { padding: 12, backgroundColor: '#F1F5F9', borderRadius: 12, marginBottom: 12 },
+  summaryText: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   summaryQty: { color: COLORS.primary, fontWeight: '900' },
-  moreItemsText: { fontSize: 12, color: COLORS.primary, fontWeight: '700', marginTop: 4 },
+  moreItemsText: { fontSize: 11, color: COLORS.primary, marginTop: 5, fontWeight: '700' },
   orderFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  orderTotalText: { fontSize: 20, fontWeight: '900', color: COLORS.secondary },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 15 },
-  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
-  emptyContainer: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
-  emptyIllustration: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#888' },
-  emptySub: { fontSize: 13, color: '#AAA', textAlign: 'center', marginTop: 5 },
+  orderTotalText: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
+  actionBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12, backgroundColor: COLORS.primary },
+  actionBtnText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
+  emptyQueueContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, backgroundColor: '#FFF', borderRadius: 20, borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#334155', marginTop: 15 },
+  emptySubtitle: { fontSize: 13, color: '#64748B', marginTop: 5 }
 });

@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
 import { useProducts } from '../../context/ProductContext'; 
-import { useVendor } from '../../context/VendorContext'; 
+import { MOCK_VENDORS, MOCK_PRODUCTS } from '../mockData';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.45;
@@ -23,15 +23,80 @@ const CAT_ICONS: { [key: string]: string } = {
   'Meals': 'restaurant-outline'
 };
 
-const VendorCard = ({ item, isSynced, liveProfile, onOpen }: any) => {
-  const displayName = isSynced ? liveProfile.name : item.name;
-  const displayImage = isSynced 
-    ? (typeof liveProfile.coverImage === 'string' ? { uri: liveProfile.coverImage } : liveProfile.coverImage)
-    : item.image;
+const getImageSource = (value: any) => {
+  if (typeof value === 'number') return value;
+  if (value?.uri) return { uri: value.uri };
+  if (typeof value === 'string') {
+    // If already a public URL, use it
+    if (value.startsWith('http')) return { uri: value };
+
+    // Try to infer bucket and get public URL via Supabase helper
+    try {
+      let bucket = 'covers';
+      const path = value;
+      if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
+      if (path.includes('/covers/') || path.startsWith('covers/')) bucket = 'covers';
+
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      if (data?.publicUrl) return { uri: data.publicUrl };
+    } catch (e) {
+      // fallthrough to return raw value
+    }
+
+    // Fallback - return raw value as uri (may be handled elsewhere)
+    return { uri: value };
+  }
+  return require('../../assets/images/cstbg.jpg');
+};
+
+// Resolve a DB-stored image value (public URL, storage path, or object) to a usable public URL string
+const resolveStorageUrl = async (value: any) => {
+  if (!value) return null;
+  if (typeof value === 'object' && value.uri) return value.uri;
+  if (typeof value === 'string') {
+    if (value.startsWith('http')) return value;
+
+    // Try to infer bucket from path
+    const path = value;
+    let bucket = 'covers';
+    if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
+    if (path.includes('/covers/') || path.startsWith('covers/')) bucket = 'covers';
+
+    try {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      if (data?.publicUrl) return data.publicUrl;
+    } catch (e) {
+      // ignore and continue to try other buckets
+    }
+
+    // Try both common buckets as a fallback
+    for (const b of ['covers', 'products']) {
+      try {
+        const { data } = supabase.storage.from(b).getPublicUrl(path);
+        if (data?.publicUrl) return data.publicUrl;
+      } catch (e) {
+        // continue
+      }
+    }
+
+    // Fallback: return original path so getImageSource can handle it
+    return path;
+  }
+  return null;
+};
+
+const VendorCard = ({ item, onOpen }: any) => {
+  const displayName = item.name;
+  const displayImage = item.image || item.coverImage || require('../../assets/images/cstbg.jpg');
 
   return (
     <TouchableOpacity style={styles.vendorCardVertical} onPress={onOpen}>
       <Image source={displayImage} style={styles.vendorLargeImage} />
+      {typeof (item.coverImage) === 'string' && (
+        <View style={{ padding: 6, backgroundColor: '#FFF', position: 'absolute', left: 10, bottom: 10, borderRadius: 6 }}>
+          <Text style={{ fontSize: 10, maxWidth: 200 }} numberOfLines={1}>{item.coverImage}</Text>
+        </View>
+      )}
       <View style={styles.ratingBadgeFloating}>
         <Ionicons name="star" size={14} color="#FFD700" />
         <Text style={styles.ratingBadgeText}>{item.rating}</Text>
@@ -42,14 +107,11 @@ const VendorCard = ({ item, isSynced, liveProfile, onOpen }: any) => {
           <Text style={styles.vendorPriceRange}>₱₱</Text>
         </View>
         <Text style={styles.vendorCategorySubtitle}>{item.category}</Text>
-        <View style={styles.vendorMetaRow}>
-          <View style={styles.metaItem}>
-            <Feather name="clock" size={14} color={COLORS.primary} />
-            <Text style={styles.metaText}>20-30 min</Text>
-          </View>
+        <Text style={styles.vendorDescription} numberOfLines={2}>{item.description || 'Freshly prepared delicacies for your customers.'}</Text>
+        <View style={styles.vendorMetaRow}> 
           <View style={styles.metaItem}>
             <Feather name="map-pin" size={14} color="#777" />
-            <Text style={styles.metaText}>{item.distance}</Text>
+            <Text style={styles.metaText}>{item.location || 'Toledo City, Cebu'}</Text>
           </View>
         </View>
       </View>
@@ -70,8 +132,10 @@ const ProductCard = ({ item, onPress }: any) => {
   };
 
   const renderImg = () => {
-    if (typeof item.img === 'number') return item.img;
-    if (item.img?.uri) return { uri: item.img.uri };
+    const imageValue = item.img || item.image_url || item.image || null;
+    if (typeof imageValue === 'number') return imageValue;
+    if (imageValue?.uri) return { uri: imageValue.uri };
+    if (typeof imageValue === 'string' && imageValue) return getImageSource(imageValue);
     return require('../../assets/images/octo.png');
   };
 
@@ -97,7 +161,6 @@ const ProductCard = ({ item, onPress }: any) => {
 };
 
 export default function UserDashboard() {
-  const { vendorProfile } = useVendor(); 
   const { userProfile } = useCart();
   const { userData } = useAuth();
   const { products } = useProducts(); 
@@ -107,31 +170,11 @@ export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState('All Vendors');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<any>(null); 
-  const [dbVendors, setDbVendors] = useState<any[]>([]);
   const [profileImage, setProfileImage] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      // Fetch Vendors
-      const { data: vendorData } = await supabase.from('merchants').select('*');
-      if (vendorData) {
-        const formatted = vendorData.map(v => ({
-          id: v.id,
-          name: v.business_name,
-          category: v.delicacy_type || 'General',
-          categoryType: v.delicacy_type || 'Others',
-          rating: '4.5',
-          distance: '1.2km',
-          image: v.verification_doc_url ? { uri: v.verification_doc_url } : require('../../assets/images/octo.png'),
-          isSynced: false
-        }));
-        setDbVendors(formatted);
-      }
-
-      // profile image is now synced via AuthContext.userData
-    };
-    fetchDashboardData();
-  }, []);
+  const [merchants, setMerchants] = useState<any[]>([]);
+  const [merchantCount, setMerchantCount] = useState(0);
+  const [merchantError, setMerchantError] = useState<string | null>(null);
+  const [vendorCount, setVendorCount] = useState(0);
 
   useEffect(() => {
     if (userData?.avatar_url) {
@@ -141,11 +184,153 @@ export default function UserDashboard() {
     }
   }, [userData]);
 
-  const VENDORS = useMemo(() => [
-    { id: 'v1', name: "Claire's Cookies", category: 'Bakery • Desserts', categoryType: 'Sweets', rating: '5.0', distance: '0.8km', image: require('../../assets/images/cst.jpg') },
-    ...dbVendors,
-    { id: 'v2', name: vendorProfile.name, category: 'Streetfood • Snacks', categoryType: 'Snacks', rating: '4.9', distance: '1.2km', image: vendorProfile.coverImage, isSynced: true },
-  ], [vendorProfile, dbVendors]);
+  useEffect(() => {
+    const fetchMerchants = async () => {
+      // Fetch merchant records first.
+      let { data, error } = await supabase.from('merchants').select('*');
+      setMerchantError(error?.message || null);
+      setMerchantCount(data?.length || 0);
+
+      const merchantMap = new Map<string, any>();
+      if (data && data.length > 0) {
+        data.forEach((merchant: any) => merchantMap.set(String(merchant.id), merchant));
+      }
+
+      // If products exist, ensure we also fetch any referenced merchant IDs not already loaded.
+      if (products && products.length > 0) {
+        const vendorIds = Array.from(new Set((products || []).map((p: any) => p.vendor_id || p.vendorId).filter(Boolean))).map((id: any) => String(id));
+        const missingIds = vendorIds.filter((id: string) => !merchantMap.has(id));
+        if (missingIds.length > 0) {
+          const res = await supabase.from('merchants').select('*').in('id', missingIds);
+          if (!res.error && res.data) {
+            res.data.forEach((merchant: any) => merchantMap.set(String(merchant.id), merchant));
+          }
+          setMerchantError((prev) => prev || res.error?.message || null);
+        }
+      }
+
+      const allMerchants = Array.from(merchantMap.values());
+      setMerchantCount(allMerchants.length);
+
+      if (allMerchants.length > 0) {
+        const normalized = await Promise.all(allMerchants.map(async (m: any) => {
+          try {
+            const possible = m?.cover_image || m?.cover_url || m?.cover || m?.image_url || m?.image || null;
+            if (possible && typeof possible === 'string' && !possible.startsWith('http')) {
+              const resolved = await resolveStorageUrl(possible);
+              m.cover_image = resolved || possible;
+            } else if (possible && typeof possible === 'string') {
+              m.cover_image = possible;
+            }
+          } catch (e) {
+            // leave original value on failure
+          }
+          return m;
+        }));
+        setMerchants(normalized);
+      } else if (products && products.length > 0) {
+        const fallbackMerchantMap = new Map<string, any>();
+        products.forEach((product: any) => {
+          const merchantId = product.vendor_id || product.vendorId || null;
+          const merchantName = product.vendorName || product.vendor_name || 'Vendor';
+          const vendorKey = merchantId ? String(merchantId) : `name:${merchantName}`;
+          if (!fallbackMerchantMap.has(vendorKey)) {
+            fallbackMerchantMap.set(vendorKey, {
+              id: merchantId || vendorKey,
+              business_name: merchantName,
+              delicacy_type: product.category || 'General',
+              pickup_details: product.desc || product.description || '',
+              barangay: product.barangay || null,
+              phone: null,
+              cover_image: product.img || product.image_url || product.image || null,
+            });
+          }
+        });
+
+        const fallbackMerchants = Array.from(fallbackMerchantMap.values());
+        setMerchantCount(fallbackMerchants.length);
+        setMerchants(fallbackMerchants);
+      } else {
+        setMerchants([]);
+      }
+    };
+
+    fetchMerchants();
+  }, [products]);
+
+  const VENDORS = useMemo(() => {
+    const vendorMap = new Map<string, any>();
+
+    (merchants || []).forEach((merchant: any) => {
+      const merchantKey = String(merchant.id);
+      vendorMap.set(merchantKey, {
+        id: merchant.id,
+        name: merchant.business_name || 'Vendor',
+        category: merchant.delicacy_type || 'General',
+        categoryType: merchant.delicacy_type || 'Others',
+        rating: '4.5',
+        distance: '1.2km',
+        image: getImageSource(merchant?.cover_image || null),
+        isSynced: true,
+        coverImage: getImageSource(merchant?.cover_image || null),
+        description: merchant.delicacy_type || 'Freshly prepared delicacies for your customers.',
+        location: merchant.barangay ? `${merchant.barangay}, Toledo City` : 'Toledo City, Cebu',
+        meetupPoint: merchant.pickup_landmark || null,
+        meetupDetails: merchant.pickup_details || null,
+        mobile: merchant.phone || null,
+        merchant,
+      });
+    });
+
+    (products || []).forEach((product: any) => {
+      const merchantId = product.vendor_id || product.vendorId || null;
+      // Try to find merchant by id first
+      let merchant = (merchants || []).find((entry: any) => String(entry.id) === String(merchantId));
+
+      // If no merchant found by id, try to match by business_name using vendorName from product
+      if (!merchant && product.vendorName) {
+        merchant = (merchants || []).find((entry: any) => String(entry.business_name || '').toLowerCase() === String(product.vendorName || '').toLowerCase());
+      }
+
+      // Build a stable, unique vendor key. Prefer merchant id, then vendor_id, then vendorName,
+      // finally fall back to a product-specific key to avoid merging unrelated products into one vendor.
+      let vendorKey: string;
+      if (merchant?.id) vendorKey = String(merchant.id);
+      else if (merchantId) vendorKey = `id:${String(merchantId)}`;
+      else if (product.vendorName) vendorKey = `name:${String(product.vendorName)}`;
+      else vendorKey = `product:${String(product.id || Date.now())}`;
+
+      if (!vendorMap.has(vendorKey)) {
+        const productImage = product.img || product.image_url || product.image || null;
+        const chosenImage = merchant?.cover_image || productImage || null;
+
+        vendorMap.set(vendorKey, {
+          id: merchant?.id || merchantId || vendorKey,
+          name: merchant?.business_name || product.vendorName || product.vendor_name || 'Vendor',
+          category: merchant?.delicacy_type || product.category || 'General',
+          categoryType: merchant?.delicacy_type || product.category || 'Others',
+          rating: '4.5',
+          distance: '1.2km',
+          image: getImageSource(chosenImage),
+          isSynced: !!merchant,
+          coverImage: getImageSource(chosenImage),
+          description: merchant?.delicacy_type || product.desc || product.description || 'Freshly prepared delicacies for your customers.',
+          location: merchant?.barangay ? `${merchant.barangay}, Toledo City` : 'Toledo City, Cebu',
+          meetupPoint: merchant?.pickup_landmark || null,
+          meetupDetails: merchant?.pickup_details || null,
+          mobile: merchant?.phone || null,
+          merchant,
+        });
+      }
+    });
+
+    const vendorsArray = Array.from(vendorMap.values());
+    return vendorsArray;
+  }, [products, merchants]);
+
+  useEffect(() => {
+    setVendorCount(VENDORS.length);
+  }, [VENDORS.length]);
 
   const filteredVendors = useMemo(() => {
     return VENDORS.filter(vendor => {
@@ -232,19 +417,34 @@ export default function UserDashboard() {
           ))}
         </ScrollView>
 
-        {filteredProducts.length > 0 && (
+        {(filteredProducts.length > 0 ? filteredProducts : MOCK_PRODUCTS).length > 0 && (
           <>
             <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>🔥 Popular Items</Text></View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularScroll}>
-              {filteredProducts.map((item: any) => (<ProductCard key={item.id} item={item} onPress={setSelectedProduct} />))}
+              {(filteredProducts.length > 0 ? filteredProducts : MOCK_PRODUCTS).map((item: any) => (<ProductCard key={item.id} item={item} onPress={setSelectedProduct} />))}
             </ScrollView>
           </>
         )}
 
         <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Nearby Vendors</Text></View>
-        {filteredVendors.length > 0 ? (
-          filteredVendors.map((vendor: any) => (
-            <VendorCard key={vendor.id} item={vendor} isSynced={vendor.isSynced} liveProfile={vendorProfile} onOpen={() => router.push({ pathname: '/customer/VendorDetails', params: { ...vendor } })} />
+        {(filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).length > 0 ? (
+          (filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).map((vendor: any) => (
+            <VendorCard key={vendor.id} item={vendor} onOpen={() => router.push({
+            pathname: '/customer/VendorDetails',
+            params: {
+              id: vendor.id,
+              name: vendor.name,
+              category: vendor.category,
+              description: vendor.description || '',
+              location: vendor.location || 'Toledo City, Cebu',
+              meetupPoint: vendor.meetupPoint || '',
+              meetupDetails: vendor.meetupDetails || '',
+              mobile: vendor.mobile || '',
+              image: typeof vendor.image === 'string' ? vendor.image : (vendor.image?.uri || ''),
+              // Prefer the raw merchant.cover_image string from DB when available, else fall back to the computed coverImage uri
+              coverImage: vendor.merchant?.cover_image ? vendor.merchant.cover_image : (typeof vendor.coverImage === 'string' ? vendor.coverImage : (vendor.coverImage?.uri || '')),
+            },
+          })} />
           ))
         ) : (
           <View style={styles.emptyContainer}><Text style={styles.emptyText}>No vendors found</Text></View>
@@ -305,7 +505,8 @@ const styles = StyleSheet.create({
   vendorTitleRow: { flexDirection: 'row', justifyContent: 'space-between' },
   vendorNameLarge: { fontSize: 18, fontWeight: '800' },
   vendorPriceRange: { color: '#AAA' },
-  vendorCategorySubtitle: { color: COLORS.primary, fontSize: 12, fontWeight: '600' },
+  vendorCategorySubtitle: { color: COLORS.primary, fontSize: 12, fontWeight: '600', marginTop: 6 },
+  vendorDescription: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 16 },
   vendorMetaRow: { flexDirection: 'row', gap: 15, marginTop: 10 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   metaText: { fontSize: 12, color: '#666' },

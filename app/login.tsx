@@ -34,8 +34,9 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      await login(email.toLowerCase().trim(), password);
-      router.replace('/customer/home');
+      const profile = await login(email.toLowerCase().trim(), password);
+      const role = profile?.role || 'customer';
+      router.replace(role === 'merchant' ? '/vendor/home' : '/customer/home');
     } catch (error: any) {
       Alert.alert("Login Failed", error.message || 'Unable to sign in.');
     } finally {

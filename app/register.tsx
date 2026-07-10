@@ -22,7 +22,7 @@ const DELICACY_TYPES = ['Native Delicacies', 'Kakanin', 'Pastries', 'Seafood', '
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { refreshUserData } = useAuth();
+  const { login } = useAuth();
   const [role, setRole] = useState<'customer' | 'merchant'>('customer');
   
   const [fullName, setFullName] = useState('');
@@ -33,6 +33,8 @@ export default function RegisterScreen() {
   const [businessName, setBusinessName] = useState('');
   const [selectedDelicacy, setSelectedDelicacy] = useState('');
   const [barangay, setBarangay] = useState('');
+  const [pickupLandmark, setPickupLandmark] = useState('');
+  const [pickupDetails, setPickupDetails] = useState('');
   const [verificationDoc, setVerificationDoc] = useState<string | null>(null);
 
   const pickDocument = async () => {
@@ -92,6 +94,8 @@ export default function RegisterScreen() {
           business_name: businessName,
           delicacy_type: selectedDelicacy,
           barangay: barangay,
+          pickup_landmark: pickupLandmark,
+          pickup_details: pickupDetails,
           verification_doc_url: finalDocPath,
         }]);
         if (merchantError) throw merchantError;
@@ -119,8 +123,14 @@ export default function RegisterScreen() {
         if (customerError) throw customerError;
       }
 
-      // Do not auto sign-in; redirect to login and prefill email so user can verify/check email
-      router.replace({ pathname: '/login', params: { email: normalizedEmail } });
+      const loginProfile = await login(normalizedEmail, password);
+      const profileRole = loginProfile?.role || role;
+
+      if (profileRole === 'merchant') {
+        router.replace('/vendor/home');
+      } else {
+        router.replace('/customer/home');
+      }
     } catch (e: any) {
       console.error("Registration Error:", e);
       Alert.alert("Registration Error", e.message);
@@ -168,6 +178,8 @@ export default function RegisterScreen() {
                   ))}
                 </View>
                 <TextInput style={styles.input} placeholder="Barangay" value={barangay} onChangeText={setBarangay} placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} placeholder="Pickup Landmark" value={pickupLandmark} onChangeText={setPickupLandmark} placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} placeholder="Pickup Details" value={pickupDetails} onChangeText={setPickupDetails} placeholderTextColor="#A0AEC0" />
                 <TouchableOpacity style={styles.uploadBtn} onPress={pickDocument}>
                   <Text style={styles.uploadText}>{verificationDoc ? "Document Attached" : "Upload Proof of Residency"}</Text>
                 </TouchableOpacity>

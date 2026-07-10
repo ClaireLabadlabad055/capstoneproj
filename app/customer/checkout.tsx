@@ -9,45 +9,37 @@ import { supabase } from '../../lib/supabaseClient';
 
 export default function Checkout() {
   const router = useRouter();
-  const { cartItems, placeOrder } = useCart(); 
-  
-  const [paymentMethod, setPaymentMethod] = useState('COD');
-  
-  // Pick-up Dropdown States
-  const [meetupPoints, setMeetupPoints] = useState<{label: string, value: string}[]>([]);
-  const [selectedPickup, setSelectedPickup] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
+  const { cartItems, placeOrder } = useCart();
 
-  // Fetch Pickup Points from Database
+  const [paymentMethod, setPaymentMethod] = useState('COD');
+  const [selectedPickup, setSelectedPickup] = useState('');
+
   useEffect(() => {
-    const fetchPoints = async () => {
-      const { data } = await supabase.from('pickup_points').select('id, name');
-      if (data) {
-        const formatted = data.map((p: any) => ({ label: p.name, value: p.id }));
-        setMeetupPoints(formatted);
-        if (formatted.length > 0) setSelectedPickup(formatted[0].value);
+    const fetchSellerPickup = async () => {
+      const vendorId = cartItems?.[0]?.vendorId || cartItems?.[0]?.vendor_id || null;
+      if (!vendorId) return;
+      try {
+        const { data: merchant } = await supabase.from('merchants').select('pickup_landmark').eq('id', vendorId).maybeSingle();
+        if (merchant) setSelectedPickup(merchant.pickup_landmark || '');
+      } catch (e) {
+        // ignore errors fetching merchant pickup
       }
     };
-    fetchPoints();
-  }, []);
 
-  const vendorsInCart: string[] = Array.from(
-    new Set((cartItems || []).map((item: any) => String(item.vendorName || 'Unknown')))
-  );
+    fetchSellerPickup();
+  }, [cartItems]);
 
-  const subtotal = (cartItems || []).reduce(
-    (sum: number, item: any) => sum + (Number(item.price) * (item.qty || 1)), 
-    0
-  );
+  const vendorsInCart = Array.from(new Set((cartItems || []).map((item: any) => String(item.vendorName || 'Unknown'))));
+  const subtotal = (cartItems || []).reduce((sum: number, item: any) => sum + (Number(item.price) * (item.qty || 1)), 0);
 
   const handlePlaceOrder = async () => {
     if (!cartItems || cartItems.length === 0) {
-      Alert.alert("Empty Cart", "Your cart is empty!");
+      Alert.alert('Empty Cart', 'Your cart is empty!');
       return;
     }
+
     try {
-      // Pass selectedPickup to placeOrder and await the created checkoutId
-      const result = await placeOrder(selectedPickup);
+      const result = await placeOrder();
       if (result?.checkoutId) {
         if (result.success === false) {
           const errMsg = result.error?.message || String(result.error || 'Unknown');
@@ -75,28 +67,14 @@ export default function Checkout() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* PICK-UP POINT DROPDOWN */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Select Nearest Pick-up Point</Text>
-          <TouchableOpacity style={styles.dropdown} onPress={() => setShowDropdown(!showDropdown)}>
-            <Text>{meetupPoints.find(p => p.value === selectedPickup)?.label || "Select Point"}</Text>
-            <Feather name={showDropdown ? "chevron-up" : "chevron-down"} size={20} color="#777" />
-          </TouchableOpacity>
-          {showDropdown && (
-            <View style={styles.dropdownMenu}>
-              {meetupPoints.map((point) => (
-                <TouchableOpacity key={point.value} style={styles.dropdownItem} onPress={() => { setSelectedPickup(point.value); setShowDropdown(false); }}>
-                  <Text>{point.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
+          <Text style={styles.sectionTitle}>Pick-up Point</Text>
+          <View style={[styles.dropdown, { justifyContent: 'flex-start', gap: 10 }]}> 
+            <Feather name="map-pin" size={18} color="#777" />
+            <Text>{selectedPickup || 'Seller did not set a pickup point'}</Text>
+          </View>
 
-        {/* PAYMENT METHOD SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment Method</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Payment Method</Text>
           <TouchableOpacity 
             style={[styles.payOption, paymentMethod === 'COD' && styles.payOptionActive]}
             onPress={() => setPaymentMethod('COD')}
@@ -125,7 +103,6 @@ export default function Checkout() {
           )}
         </View>
 
-        {/* ORDER SUMMARY */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Review Items</Text>
           {vendorsInCart.map((vendorName, index) => (
@@ -146,7 +123,6 @@ export default function Checkout() {
         </View>
       </ScrollView>
 
-      {/* FOOTER */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder}>
           <Text style={styles.placeOrderText}>Confirm Order • ₱{subtotal.toFixed(2)}</Text>

@@ -19,8 +19,8 @@ export default function OrderSuccess() {
     const fetchOrder = async () => {
       if (!checkoutId) { setLoading(false); return; }
       
-      // 1. Fetch Order
-      const { data: orderData, error: fetchError } = await supabase.from('orders').select('*').eq('id', checkoutId).single();
+      // 1. Fetch Order (use maybeSingle to avoid exception when no row)
+      const { data: orderData, error: fetchError } = await supabase.from('orders').select('*').eq('id', checkoutId).maybeSingle();
 
       if (orderData) {
         setOrder(orderData);
@@ -59,20 +59,26 @@ export default function OrderSuccess() {
   useEffect(() => {
     const derivePickup = async () => {
       if (!order) return setPickupName('No specific location');
-      if (order.pickup_point_id) {
-        try {
-          const { data: pointData } = await supabase
-            .from('pickup_points')
-            .select('name')
-            .eq('id', order.pickup_point_id)
-            .single();
-          setPickupName(pointData?.name || 'Standard Location');
-        } catch (e) {
-          setPickupName('Standard Location');
+      if (!order.pickup_point_id) return setPickupName('No specific location');
+
+      // Try to resolve pickup_point_id as a pickup_points.id first
+      try {
+        const { data: pointData } = await supabase
+          .from('pickup_points')
+          .select('name')
+          .eq('id', order.pickup_point_id)
+          .maybeSingle();
+
+        if (pointData && pointData.name) {
+          setPickupName(pointData.name);
+          return;
         }
-      } else {
-        setPickupName('No specific location');
+      } catch (e) {
+        // ignore and fall back
       }
+
+      // Fallback: if pickup_point_id is a textual landmark set by seller, show it directly
+      setPickupName(String(order.pickup_point_id));
     };
     derivePickup();
   }, [order, orders]);

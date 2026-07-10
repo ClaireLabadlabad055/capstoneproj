@@ -34,13 +34,22 @@ export default function CartScreen() {
     const item = props.item;
     // ✅ FIX: Ensure price is treated as a number
     const displayPrice = Number(item.price) || 0;
+    // Resolve image source for React Native <Image>
+    let imageSource: any = require('../../assets/images/octo.png');
+    const maybeImage = item.image || item.img || item.image_url || null;
+    if (maybeImage) {
+      if (typeof maybeImage === 'string') {
+        imageSource = { uri: maybeImage };
+      } else if (maybeImage.uri) {
+        imageSource = maybeImage;
+      }
+    }
 
     return (
       <View style={styles.cartCard}>
         <View style={styles.imageContainer}>
-          {/* Fallback image if item.image is missing */}
           <Image 
-            source={item.image || item.img || require('../../assets/images/octo.png')} 
+            source={imageSource}
             style={styles.itemImage} 
           />
         </View>

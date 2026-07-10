@@ -1,0 +1,8 @@
+-- Optional note for Supabase:
+-- Create a public storage bucket named 'products' and ensure the following policy allows uploads/downloads:
+--
+-- CREATE POLICY "Public Access" ON storage.objects
+-- FOR SELECT USING (bucket_id = 'products');
+--
+-- CREATE POLICY "Authenticated uploads" ON storage.objects
+-- FOR INSERT WITH CHECK (bucket_id = 'products' AND auth.role() = 'authenticated');

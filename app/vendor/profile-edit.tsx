@@ -1,7 +1,7 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
     Dimensions,
@@ -17,17 +17,26 @@ import {
     View
 } from 'react-native';
 import { COLORS } from '../../styles/globalStyles';
+import { useVendor } from '../../context/VendorContext';
 
 const { width } = Dimensions.get('window');
 
 export default function VendorProfileEdit() {
   const router = useRouter();
+  const { vendorProfile, saveVendorProfile } = useVendor();
 
-  // --- VENDOR PROFILE STATE ---
-  const [vendorName, setVendorName] = useState("Takoyaki Corner");
-  const [description, setDescription] = useState("Authentic Japanese-style Takoyaki in the heart of Toledo City. Freshly made every day with premium ingredients.");
-  const [location, setLocation] = useState("Poblacion, Toledo City (Near Plaza)");
+  const [vendorName, setVendorName] = useState('');
+  const [description, setDescription] = useState('');
+  const [location, setLocation] = useState('');
   const [coverImage, setCoverImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (vendorProfile) {
+      setVendorName(vendorProfile.name || '');
+      setDescription(vendorProfile.description || '');
+      setLocation(vendorProfile.location || '');
+    }
+  }, [vendorProfile]);
 
   // ✅ LOGIC: Image Selection
   const pickCoverPhoto = async () => {
@@ -43,16 +52,25 @@ export default function VendorProfileEdit() {
     }
   };
 
-  // ✅ LOGIC: Save Changes
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     if (!vendorName || !location) {
       Alert.alert("Error", "Store Name and Location are required.");
       return;
     }
-    
-    // In your Capstone, this is where you would update Firebase/Database
-    Alert.alert("Success", "Your shop profile has been updated!", [
-      { text: "OK", onPress: () => router.back() }
+
+    const result = await saveVendorProfile({
+      name: vendorName,
+      description,
+      location,
+    });
+
+    if (!result.success) {
+      Alert.alert('Update Failed', 'Your profile could not be synced right now.');
+      return;
+    }
+
+    Alert.alert('Success', 'Your shop profile has been updated and synced.', [
+      { text: 'OK', onPress: () => router.back() }
     ]);
   };
 

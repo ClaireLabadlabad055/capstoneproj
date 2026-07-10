@@ -1,19 +1,49 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
-  View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, 
-  Dimensions, SectionList, Modal, StatusBar, Linking, TextInput, ScrollView, KeyboardAvoidingView, Platform
+  View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, Alert,
+  Dimensions, SectionList, Modal, StatusBar, Linking, TextInput, ScrollView, KeyboardAvoidingView, Platform, Share
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../styles/globalStyles';
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
-import { useProducts } from '../../context/ProductContext'; 
 import { useVendor } from '../../context/VendorContext'; 
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { supabase } from '../../lib/supabaseClient'; // Make sure this path is correct
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = (width - 50) / 2; 
+
+// Resolve simple storage paths to public URLs (synchronous helper using supabase.getPublicUrl)
+const resolveStorageUrlSync = (value: any) => {
+  if (!value) return null;
+  if (typeof value === 'object' && value.uri) return value.uri;
+  if (typeof value === 'string') {
+    if (value.startsWith('http')) return value;
+
+    const path = value;
+    const bucketsToTry: string[] = [];
+    if (path.includes('/products/') || path.startsWith('products/')) bucketsToTry.push('products');
+    if (path.includes('/covers/') || path.startsWith('covers/')) bucketsToTry.push('covers');
+    // Ensure defaults
+    bucketsToTry.push('covers', 'products');
+
+    const buckets = Array.from(new Set(bucketsToTry));
+    for (const b of buckets) {
+      try {
+        const { data } = supabase.storage.from(b).getPublicUrl(path);
+        if (data?.publicUrl) return data.publicUrl;
+      } catch (e) {
+        // continue
+      }
+    }
+
+    return path;
+  }
+  return null;
+};
 
 // --- PRODUCT CARD COMPONENT ---
 const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => void, onPress: (p: any) => void }) => {
@@ -33,34 +63,39 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
     if (typeof item.img === 'number') return item.img;
     if (item.img?.uri) return { uri: item.img.uri };
     if (typeof item.img === 'string') return { uri: item.img };
+    if (typeof item.image_url === 'string') return { uri: item.image_url };
+    if (typeof item.image === 'string') return { uri: item.image };
     return require('../../assets/images/octo.png');
   };
 
   return (
     <Animated.View style={[styles.popularCard, animatedStyle]}>
       <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(item)}>
-        <Image source={renderImg()} style={styles.popularItemImg} />
-        {item.stock === 0 && (
-          <View style={styles.soldOutOverlay}>
-            <Text style={styles.soldOutText}>SOLD OUT</Text>
-          </View>
-        )}
+        <View style={styles.imageContainer}>
+          <Image source={renderImg()} style={styles.popularItemImg} />
+          {item.stock === 0 && (
+            <View style={styles.soldOutOverlay}>
+              <Text style={styles.soldOutText}>SOLD OUT</Text>
+            </View>
+          )}
+
+        </View>
       </TouchableOpacity>
-      
+
       <View style={styles.popularCardContent}>
         {item.orderType === 'Special Package' && (
           <View style={styles.promoBadgeInline}>
             <Text style={styles.promoBadgeText}>PROMO</Text>
           </View>
         )}
-        
+
         <Text style={styles.popularItemName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.popularItemDesc}>{item.product_description || "Toledo's finest."}</Text>
-        
+        <Text style={styles.popularItemDesc} numberOfLines={1}>{item.product_description || "Toledo's finest."}</Text>
+
         <View style={styles.priceRow}>
           <Text style={styles.popularItemPrice}>₱{item.price}</Text>
-          <TouchableOpacity 
-            onPress={handleAdd} 
+          <TouchableOpacity
+            onPress={handleAdd}
             style={[styles.addToCartSmallBtn, { opacity: item.stock === 0 ? 0.4 : 1 }]}
             disabled={item.stock === 0}
           >
@@ -74,49 +109,142 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
 
 export default function VendorDetails() {
   const { vendorProfile, updateProfile } = useVendor(); 
+  const { user } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams();
   const { addToCart } = useCart();
-  const { products: contextProducts } = useProducts(); 
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [dbProducts, setDbProducts] = useState<any[]>([]);
+  const [merchantProfile, setMerchantProfile] = useState<any>(null);
+  const [headerImage, setHeaderImage] = useState<any>(null);
+  const [merchantContactProfile, setMerchantContactProfile] = useState<any>(null);
   const [isFav, setIsFav] = useState<boolean>(!!(vendorProfile?.favorite || params.favorite));
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<any>>([]);
   const [chatInput, setChatInput] = useState('');
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Fetch products from database
-  useEffect(() => {
-    const fetchVendorProducts = async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('vendor_id', params.id);
+  const fetchVendorProducts = useCallback(async () => {
+    if (!params.id) return;
 
-      if (data) setDbProducts(data);
-      if (error) console.error("Error fetching vendor products:", error);
-    };
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('vendor_id', params.id);
 
-    if (params.id) fetchVendorProducts();
+    if (data) setDbProducts(data);
+    if (error) console.error('Error fetching vendor products:', error);
   }, [params.id]);
 
-  // Combine DB products with existing context/mock products
-  const allProducts = [...dbProducts, ...contextProducts];
+  const fetchMerchantProfile = useCallback(async () => {
+    if (!params.id) return;
 
-  const isTargetVendor = params.name === vendorProfile.name || params.id === "v2";
-  const displayName = isTargetVendor ? vendorProfile.name : (params.name as string);
-  const displayDesc = isTargetVendor ? vendorProfile.description : (params.description || "Fresh local delicacies.");
-  const displayLoc = isTargetVendor ? vendorProfile.location : (params.location || "Toledo City, Cebu");
-  
-  const distance = params.distance || "1.2 km";
-  const time = params.time || "15-20 mins";
-  const rating = params.rating || "4.8";
+    const [merchantResponse, customerResponse] = await Promise.all([
+      supabase.from('merchants').select('*').eq('id', params.id).maybeSingle(),
+      supabase.from('customers').select('*').eq('id', params.id).maybeSingle(),
+    ]);
+
+    if (!merchantResponse.error && merchantResponse.data) {
+      // Normalize cover_image to a usable public URL if needed
+      const mp = { ...merchantResponse.data };
+      try {
+        if (mp?.cover_image && typeof mp.cover_image === 'string' && !mp.cover_image.startsWith('http')) {
+          const resolved = resolveStorageUrlSync(mp.cover_image);
+          mp.cover_image = resolved || mp.cover_image;
+        }
+      } catch (e) {
+        // ignore
+      }
+      setMerchantProfile(mp);
+    }
+
+    if (!customerResponse.error && customerResponse.data) {
+      setMerchantContactProfile(customerResponse.data);
+    }
+  }, [params.id]);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchVendorProducts();
+      fetchMerchantProfile();
+    }
+  }, [params.id, fetchVendorProducts, fetchMerchantProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (params.id) {
+        fetchVendorProducts();
+        fetchMerchantProfile();
+      }
+    }, [params.id, fetchVendorProducts, fetchMerchantProfile])
+  );
+
+  // Keep a derived header image state that prefers merchantProfile.cover_image
+  useEffect(() => {
+    const preferred = merchantProfile?.cover_image || params.coverImage || params.image || null;
+    try {
+      const resolved = resolveStorageUrlSync(preferred);
+      if (resolved) setHeaderImage(isNaN(Number(resolved)) ? { uri: resolved } : Number(resolved));
+      else setHeaderImage(preferred ? (isNaN(Number(preferred)) ? { uri: String(preferred) } : Number(preferred)) : require('../../assets/images/cstbg.jpg'));
+    } catch (e) {
+      setHeaderImage(preferred ? (isNaN(Number(preferred)) ? { uri: String(preferred) } : Number(preferred)) : require('../../assets/images/cstbg.jpg'));
+    }
+  }, [merchantProfile, params.coverImage, params.image]);
+
+  const refreshChatMessages = async (vendorId = params.id as string | undefined) => {
+    if (!vendorId) return;
+    setLoadingMessages(true);
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', `vendor:${vendorId}`)
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      setChatMessages(data);
+    }
+    setLoadingMessages(false);
+  };
+
+  useEffect(() => {
+    if (!showChat || !params.id) return;
+    refreshChatMessages(params.id as string);
+
+    const channel = supabase.channel(`customer-chat-${params.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
+        const newConversationId = payload?.new?.conversation_id;
+        const oldConversationId = payload?.old?.conversation_id;
+        if (newConversationId === `vendor:${params.id}` || oldConversationId === `vendor:${params.id}`) {
+          refreshChatMessages(params.id as string);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [showChat, params.id]);
+
+  const allProducts = dbProducts;
+
+  const displayName = merchantProfile?.business_name || merchantProfile?.full_name || (params.name as string) || 'Vendor';
+  const displayDesc = vendorProfile?.description || (params.description as string) || merchantProfile?.delicacy_type || 'Fresh local delicacies.';
+  const displayLoc = merchantProfile?.barangay ? `${merchantProfile.barangay}, Toledo City` : ((params.location as string) || 'Toledo City, Cebu');
+  const phoneNumber = merchantContactProfile?.phone || merchantProfile?.phone || (params.mobile as string) || 'Not available';
+  const meetupPoint = merchantProfile?.pickup_landmark || (params.meetupPoint as string) || 'Meetup point not specified.';
+  const meetupDetails = merchantProfile?.pickup_details || (params.meetupDetails as string) || 'Meetup details are not available.';
+
+  const distance = params.distance || '1.2 km';
+  const time = params.time || '15-20 mins';
+  const rating = params.rating || '4.8';
 
   const groupedProducts = useMemo(() => {
-    const vendorProducts = allProducts.filter(p => 
-        p.vendorId === params.id || p.vendorName === displayName
-    );
+    const vendorProducts = allProducts.filter((p: any) => {
+      const productVendorId = p.vendor_id || p.vendorId || null;
+      const vendorNameValue = p.vendor_name || p.vendorName || '';
+      const matchesVendorId = String(productVendorId || '') === String(params.id || '');
+      const matchesVendorName = !!vendorNameValue && String(vendorNameValue).toLowerCase() === String(displayName || '').toLowerCase();
+      return matchesVendorId || matchesVendorName;
+    });
     
     return [
       { 
@@ -136,14 +264,31 @@ export default function VendorDetails() {
     addToCart({ ...product, vendorName: displayName || 'Vendor', qty: 1 });
   };
 
-  const renderHeaderImage = () => {
-    if (isTargetVendor) {
-      return typeof vendorProfile.coverImage === 'string' 
-        ? { uri: vendorProfile.coverImage } 
-        : vendorProfile.coverImage;
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !params.id || !user?.id) return;
+
+    const content = chatInput.trim();
+    const { error } = await supabase.from('messages').insert([{
+      conversation_id: `vendor:${params.id}`,
+      sender_id: user.id,
+      receiver_id: params.id as string,
+      sender_name: user?.email || 'Customer',
+      receiver_name: displayName || 'Vendor',
+      content,
+    }]);
+
+    if (error) {
+      Alert.alert('Message failed', error.message);
+      return;
     }
-    if (!params.image) return require('../../assets/images/cstbg.jpg');
-    return isNaN(Number(params.image)) ? { uri: params.image as string } : Number(params.image);
+
+    setChatInput('');
+    await refreshChatMessages(params.id as string);
+  };
+
+  const renderHeaderImage = () => {
+    if (!headerImage) return require('../../assets/images/cstbg.jpg');
+    return headerImage;
   };
 
   return (
@@ -158,7 +303,16 @@ export default function VendorDetails() {
         ListHeaderComponent={() => (
           <View>
             <View style={styles.headerImageWrapper}>
-              <Image source={renderHeaderImage()} style={styles.headerImage} />
+              <Image
+                key={typeof headerImage === 'object' && headerImage?.uri ? headerImage.uri : String(headerImage)}
+                source={renderHeaderImage()}
+                style={styles.headerImage}
+                onError={() => {
+                  setToastMsg('Cover image failed to load');
+                  // fallback to default background
+                  setHeaderImage(require('../../assets/images/cstbg.jpg'));
+                }}
+              />
               <View style={styles.imageOverlay} />
               <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                 <Feather name="arrow-left" size={22} color={COLORS.secondary} />
@@ -211,41 +365,46 @@ export default function VendorDetails() {
                 <Text style={styles.locationText}>{displayLoc}</Text>
               </View>
 
-              <View style={styles.contactBox}>
-                <Text style={styles.bookingText}>For bookings — call or message</Text>
-
+              <View style={styles.contactCard}>
                 <View style={styles.contactRow}>
-                  <Ionicons name="call" size={16} color={COLORS.primary} />
-                  <Text style={styles.contactNumber}>{vendorProfile?.mobile || params.mobile || 'Not available'}</Text>
-
-                  {(vendorProfile?.mobile || params.mobile) && (
-                    <>
-                      <TouchableOpacity
-                        style={[styles.contactBtn, styles.callBtn]}
-                        onPress={() => Linking.openURL(`tel:${vendorProfile?.mobile || params.mobile}`)}
-                      >
-                        <Text style={styles.contactBtnText}>Call</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.contactBtn, styles.msgBtn]}
-                        onPress={() => {
-                          setShowChat(true);
-                          // seed a greeting if empty
-                          if (chatMessages.length === 0) {
-                            setChatMessages([{ from: 'vendor', text: `Hi! This is ${displayName}. How can we help?` }]);
-                          }
-                        }}
-                      >
-                        <Text style={[styles.contactBtnText, styles.msgBtnText]}>Message</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
+                  <View style={styles.contactLabelRow}>
+                    <Ionicons name="call" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <Text style={styles.contactLabel}>Phone</Text>
+                  </View>
+                  <Text style={styles.contactValue}>{phoneNumber}</Text>
                 </View>
+                <View style={styles.contactRow}>
+                  <View style={styles.contactLabelRow}>
+                    <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <Text style={styles.contactLabel}>Meet-up</Text>
+                  </View>
+                  <Text style={styles.contactValue}>{meetupPoint}</Text>
+                </View>
+                <View style={styles.contactRow}>
+                  <View style={styles.contactLabelRow}>
+                    <Feather name="map-pin" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <Text style={styles.contactLabel}>Details</Text>
+                  </View>
+                  <Text style={styles.contactValue}>{meetupDetails}</Text>
+                </View>
+                <View style={styles.contactActions}>
+                  {(vendorProfile?.mobile || params.mobile) && (
+                    <TouchableOpacity
+                      style={styles.contactActionBtn}
+                      onPress={() => Linking.openURL(`tel:${phoneNumber}`)}
+                    >
+                      <Feather name="phone-call" size={14} color="#FFF" />
+                      <Text style={styles.contactActionText}>Call</Text>
+                    </TouchableOpacity>
+                  )}
 
-                <View style={styles.contactRowMinimal}>
-                  <MaterialCommunityIcons name="map-marker-outline" size={16} color="#888" />
-                  <Text style={styles.contactText}>{vendorProfile?.meetupPoint || params.meetup || 'Meetup point not specified'}</Text>
+                  <TouchableOpacity
+                    style={[styles.contactActionBtn, styles.messageActionBtn]}
+                    onPress={() => setShowChat(true)}
+                  >
+                    <Feather name="message-circle" size={14} color="#FFF" />
+                    <Text style={styles.contactActionText}>Message</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -326,9 +485,11 @@ export default function VendorDetails() {
             </View>
 
             <ScrollView contentContainerStyle={styles.chatBody}>
-              {chatMessages.map((m, idx) => (
-                <View key={idx} style={[styles.chatBubble, m.from === 'vendor' ? styles.chatBubbleVendor : styles.chatBubbleUser]}>
-                  <Text style={styles.chatBubbleText}>{m.text}</Text>
+              {loadingMessages ? <Text style={styles.chatEmpty}>Loading messages...</Text> : chatMessages.length === 0 ? (
+                <Text style={styles.chatEmpty}>No messages yet. Start the conversation.</Text>
+              ) : chatMessages.map((m, idx) => (
+                <View key={m.id || idx} style={[styles.chatBubble, m.sender_id === user?.id ? styles.chatBubbleUser : styles.chatBubbleVendor]}>
+                  <Text style={styles.chatBubbleText}>{m.content}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -342,15 +503,7 @@ export default function VendorDetails() {
               />
               <TouchableOpacity
                 style={styles.sendBtn}
-                onPress={() => {
-                  if (!chatInput.trim()) return;
-                  setChatMessages(prev => [...prev, { from: 'user', text: chatInput.trim() }]);
-                  setChatInput('');
-                  // simple automated vendor reply stub
-                  setTimeout(() => {
-                    setChatMessages(prev => [...prev, { from: 'vendor', text: 'Thanks! We will get back to you shortly.' }]);
-                  }, 800);
-                }}
+                onPress={handleSendMessage}
               >
                 <Text style={styles.sendBtnText}>Send</Text>
               </TouchableOpacity>
@@ -386,17 +539,20 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
   statTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F6F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
   statText: { fontWeight: '800', color: COLORS.secondary, fontSize: 12 },
-  locationDetail: { flexDirection: 'row', alignItems: 'center', marginTop: 15, gap: 5, paddingLeft: 2 },
-  locationText: { fontSize: 12, color: '#888', fontWeight: '600' },
+  locationDetail: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 15, gap: 5, paddingLeft: 2, flexWrap: 'wrap' },
+  locationText: { flex: 1, fontSize: 12, color: '#888', fontWeight: '600', flexWrap: 'wrap' },
   sectionHeader: { paddingHorizontal: 25, marginTop: 35, marginBottom: 15 },
   sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
   accentLine: { width: 40, height: 4, backgroundColor: COLORS.primary, marginTop: 5, borderRadius: 2 },
   gridRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 20 },
   popularCard: { width: CARD_WIDTH, backgroundColor: '#FFF', borderRadius: 24, elevation: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-  popularItemImg: { width: '100%', height: 120, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  imageContainer: { width: '100%', height: 120 },
+  popularItemImg: { width: '100%', height: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   soldOutOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   soldOutText: { color: COLORS.primary, fontWeight: '900', fontSize: 12 },
+  stockTag: { position: 'absolute', bottom: 10, left: 10, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  stockTagText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   popularCardContent: { padding: 12 },
   promoBadgeInline: { alignSelf: 'flex-start', backgroundColor: '#FFF0F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 8 },
   promoBadgeText: { color: COLORS.primary, fontSize: 10, fontWeight: '900' },
@@ -418,17 +574,16 @@ const styles = StyleSheet.create({
   addBtnLarge: { backgroundColor: COLORS.primary, padding: 22, borderRadius: 22, alignItems: 'center', marginTop: 'auto', marginBottom: 15 },
   addBtnLargeText: { color: '#FFF', fontSize: 18, fontWeight: '900' }
   ,
-  contactBox: { marginTop: 14, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#F0F0F0' },
-  bookingText: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 8 },
-  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  contactRowMinimal: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  contactNumber: { fontSize: 13, color: '#222', fontWeight: '700', marginLeft: 6 },
-  contactBtn: { marginLeft: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  callBtn: { backgroundColor: COLORS.primary },
-  msgBtn: { backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.primary },
-  contactBtnText: { color: '#FFF', fontWeight: '800' },
-  contactText: { fontSize: 13, color: '#666' }
-  ,
+  contactCard: { marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#EEE' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  contactLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  contactIcon: { marginRight: 8 },
+  contactLabel: { fontSize: 12, fontWeight: '800', color: COLORS.secondary },
+  contactValue: { flex: 1, textAlign: 'right', fontSize: 13, color: '#666', fontWeight: '600', lineHeight: 20 },
+  contactActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  contactActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14 },
+  messageActionBtn: { backgroundColor: COLORS.secondary },
+  contactActionText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   chatContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '70%' },
   chatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderColor: '#F2F2F2' },
@@ -438,6 +593,7 @@ const styles = StyleSheet.create({
   chatBubbleVendor: { backgroundColor: '#F4F6F8', alignSelf: 'flex-start' },
   chatBubbleUser: { backgroundColor: COLORS.primary, alignSelf: 'flex-end' },
   chatBubbleText: { color: '#111' },
+  chatEmpty: { color: '#666', fontSize: 13, textAlign: 'center', paddingVertical: 10 },
   chatInputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1, borderColor: '#F2F2F2' },
   chatTextInput: { flex: 1, backgroundColor: '#FAFAFA', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8 },
   sendBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },

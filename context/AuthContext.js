@@ -9,31 +9,28 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [recentLoginStatus, setRecentLoginStatus] = useState(null);
 
-  // Centralized function to fetch fresh data, including avatar_url
   const refreshUserData = async (userId) => {
-    if (!userId) return;
-    
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    
-    if (data && !error) {
-      setUserData(data);
-      return;
-    }
+    if (!userId) return null;
 
-    // Fallback: some accounts may be stored in profiles instead of customers
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    const [customerResponse, merchantResponse, profileResponse] = await Promise.all([
+      supabase.from('customers').select('*').eq('id', userId).maybeSingle(),
+      supabase.from('merchants').select('*').eq('id', userId).maybeSingle(),
+      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+    ]);
 
-    if (profileData && !profileError) {
-      setUserData(profileData);
-    }
+    const customerData = customerResponse.data;
+    const merchantData = merchantResponse.data;
+    const profileData = profileResponse.data;
+
+    const mergedData = {
+      ...(profileData || {}),
+      ...(customerData || {}),
+      ...(merchantData || {}),
+      role: customerData?.role || profileData?.role || (merchantData ? 'merchant' : 'customer'),
+    };
+
+    setUserData(mergedData);
+    return mergedData;
   };
 
   const handleAuthStateChange = async (session) => {
@@ -58,11 +55,10 @@ export const AuthProvider = ({ children }) => {
         handleAuthStateChange(session);
       }
     );
-    
+
     return () => subscription?.unsubscribe();
   }, []);
 
-  // UPDATED: Added a helper to update local state immediately after upload
   const updateLocalUserData = (newData) => {
     setUserData(prev => ({ ...prev, ...newData }));
   };
@@ -73,7 +69,7 @@ export const AuthProvider = ({ children }) => {
       password,
       options: { emailRedirectTo: undefined }
     });
-    
+
     if (error) throw new Error(error.message);
 
     const userId = data?.user?.id;
@@ -91,20 +87,17 @@ export const AuthProvider = ({ children }) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
     if (data?.user?.id) {
-      await refreshUserData(data.user.id);
+      const profile = await refreshUserData(data.user.id);
 
-      // determine if this is a newly created account by checking customer's created_at
       try {
         const userId = data.user.id;
-        const { data: cust, error: custErr } = await supabase.from('customers').select('created_at').eq('id', userId).maybeSingle();
+        const { data: cust } = await supabase.from('customers').select('created_at').eq('id', userId).maybeSingle();
         let isNew = false;
         if (cust && cust.created_at) {
           const created = new Date(cust.created_at).getTime();
           const now = Date.now();
-          // consider new if created within the last 30 seconds
           if (now - created < 30000) isNew = true;
         }
-        // fallback: if no customers row, check profiles
         if (!cust) {
           const { data: prof } = await supabase.from('profiles').select('created_at').eq('id', userId).maybeSingle();
           if (prof && prof.created_at) {
@@ -116,9 +109,12 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {
         console.error('Error checking new account status', e);
       }
+
+      return profile;
     }
+    return null;
   };
-  
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -126,17 +122,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      userData, 
+    <AuthContext.Provider value={{
+      user,
+      userData,
       recentLoginStatus,
       setRecentLoginStatus,
-      login, 
-      register, 
-      logout, 
-      loading, 
+      login,
+      register,
+      logout,
+      loading,
       refreshUserData,
-      updateLocalUserData // Use this in Profile.tsx after upload
+      updateLocalUserData
     }}>
       {children}
     </AuthContext.Provider>
