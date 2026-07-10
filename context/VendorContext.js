@@ -9,6 +9,9 @@ export const VendorProvider = ({ children }) => {
     name: "Takoyaki Corner",
     description: "Authentic Japanese delicacies in Toledo City. Freshly made every day.",
     location: "Poblacion, Toledo City",
+    favorite: false,
+    meetupPoint: "Market Front Gate",
+    mobile: "+639171234567",
     coverImage: require('../assets/images/cstbg.jpg'), // Default local image
   });
 

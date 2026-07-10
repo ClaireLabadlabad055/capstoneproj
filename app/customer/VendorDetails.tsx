@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, 
-  Dimensions, SectionList, Modal, StatusBar 
+  Dimensions, SectionList, Modal, StatusBar, Linking, TextInput, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -73,13 +73,18 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
 };
 
 export default function VendorDetails() {
-  const { vendorProfile } = useVendor(); 
+  const { vendorProfile, updateProfile } = useVendor(); 
   const router = useRouter();
   const params = useLocalSearchParams();
   const { addToCart } = useCart();
   const { products: contextProducts } = useProducts(); 
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [dbProducts, setDbProducts] = useState<any[]>([]);
+  const [isFav, setIsFav] = useState<boolean>(!!(vendorProfile?.favorite || params.favorite));
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<any>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Fetch products from database
   useEffect(() => {
@@ -161,33 +166,87 @@ export default function VendorDetails() {
             </View>
 
             <View style={styles.infoBox}>
-              <View style={styles.titleRow}>
+              <View style={styles.titleRowMinimal}>
                 <Text style={styles.vendorName}>{displayName}</Text>
-                <TouchableOpacity style={styles.favBtn}>
-                  <Feather name="heart" size={20} color={COLORS.primary} />
+                <TouchableOpacity
+                  style={[styles.favBtn, isFav && styles.favBtnActive]}
+                  onPress={async () => {
+                    const newVal = !isFav;
+                    // optimistic UI
+                    setIsFav(newVal);
+                    try {
+                      // update local context
+                      updateProfile({ favorite: newVal });
+
+                      // try persist to DB if vendor id available
+                      if (params.id) {
+                        const { error } = await supabase
+                          .from('vendors')
+                          .update({ favorite: newVal })
+                          .eq('id', params.id);
+                          if (error) {
+                            console.error('Failed to persist favorite:', error);
+                            // rollback
+                            setIsFav(!newVal);
+                            updateProfile({ favorite: !newVal });
+                            setToastMsg('Unable to save favorite. Please try again.');
+                            setTimeout(() => setToastMsg(null), 3000);
+                          }
+                      }
+                    } catch (err) {
+                      console.error('Error toggling favorite:', err);
+                      setIsFav(!newVal);
+                      updateProfile({ favorite: !newVal });
+                    }
+                  }}
+                >
+                  <Feather name="heart" size={20} color={isFav ? '#E74C3C' : '#999'} />
                 </TouchableOpacity>
               </View>
-              
+
               <Text style={styles.description}>{displayDesc}</Text>
-              
-              <View style={styles.statsRow}>
-                <View style={styles.statTag}>
-                  <Ionicons name="star" size={14} color="#FFD700" />
-                  <Text style={styles.statText}>{rating}</Text>
-                </View>
-                <View style={styles.statTag}>
-                  <MaterialCommunityIcons name="map-marker-distance" size={14} color={COLORS.primary} />
-                  <Text style={styles.statText}>{distance}</Text>
-                </View>
-                <View style={styles.statTag}>
-                  <Feather name="clock" size={14} color="#4CAF50" />
-                  <Text style={styles.statText}>{time}</Text>
-                </View>
-              </View>
 
               <View style={styles.locationDetail}>
                 <Ionicons name="location-outline" size={14} color="#888" />
                 <Text style={styles.locationText}>{displayLoc}</Text>
+              </View>
+
+              <View style={styles.contactBox}>
+                <Text style={styles.bookingText}>For bookings — call or message</Text>
+
+                <View style={styles.contactRow}>
+                  <Ionicons name="call" size={16} color={COLORS.primary} />
+                  <Text style={styles.contactNumber}>{vendorProfile?.mobile || params.mobile || 'Not available'}</Text>
+
+                  {(vendorProfile?.mobile || params.mobile) && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.contactBtn, styles.callBtn]}
+                        onPress={() => Linking.openURL(`tel:${vendorProfile?.mobile || params.mobile}`)}
+                      >
+                        <Text style={styles.contactBtnText}>Call</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.contactBtn, styles.msgBtn]}
+                        onPress={() => {
+                          setShowChat(true);
+                          // seed a greeting if empty
+                          if (chatMessages.length === 0) {
+                            setChatMessages([{ from: 'vendor', text: `Hi! This is ${displayName}. How can we help?` }]);
+                          }
+                        }}
+                      >
+                        <Text style={[styles.contactBtnText, styles.msgBtnText]}>Message</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+
+                <View style={styles.contactRowMinimal}>
+                  <MaterialCommunityIcons name="map-marker-outline" size={16} color="#888" />
+                  <Text style={styles.contactText}>{vendorProfile?.meetupPoint || params.meetup || 'Meetup point not specified'}</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -255,6 +314,58 @@ export default function VendorDetails() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showChat} animationType="slide" transparent={true}>
+        <View style={styles.chatOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatContainer}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle}>{displayName}</Text>
+              <TouchableOpacity onPress={() => setShowChat(false)}>
+                <Ionicons name="close" size={22} color="#444" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.chatBody}>
+              {chatMessages.map((m, idx) => (
+                <View key={idx} style={[styles.chatBubble, m.from === 'vendor' ? styles.chatBubbleVendor : styles.chatBubbleUser]}>
+                  <Text style={styles.chatBubbleText}>{m.text}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.chatInputRow}>
+              <TextInput
+                value={chatInput}
+                onChangeText={setChatInput}
+                placeholder="Type a message..."
+                style={styles.chatTextInput}
+              />
+              <TouchableOpacity
+                style={styles.sendBtn}
+                onPress={() => {
+                  if (!chatInput.trim()) return;
+                  setChatMessages(prev => [...prev, { from: 'user', text: chatInput.trim() }]);
+                  setChatInput('');
+                  // simple automated vendor reply stub
+                  setTimeout(() => {
+                    setChatMessages(prev => [...prev, { from: 'vendor', text: 'Thanks! We will get back to you shortly.' }]);
+                  }, 800);
+                }}
+              >
+                <Text style={styles.sendBtnText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {toastMsg && (
+        <View style={styles.toastContainer} pointerEvents="none">
+          <View style={styles.toastBubble}>
+            <Text style={styles.toastText}>{toastMsg}</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -267,8 +378,10 @@ const styles = StyleSheet.create({
   backBtn: { position: 'absolute', top: 50, left: 20, backgroundColor: '#FFF', padding: 10, borderRadius: 15, elevation: 5 },
   infoBox: { paddingHorizontal: 25, paddingTop: 30, paddingBottom: 25, backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, marginTop: -40, elevation: 10 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  titleRowMinimal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   vendorName: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
   favBtn: { backgroundColor: '#F8F8F8', padding: 12, borderRadius: 50 },
+  favBtnActive: { backgroundColor: '#FFF0F0' },
   description: { fontSize: 13, color: '#666', marginTop: 10, lineHeight: 20 },
   statsRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
   statTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F6F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
@@ -304,4 +417,34 @@ const styles = StyleSheet.create({
   modalDescText: { fontSize: 15, color: '#666', marginTop: 12, lineHeight: 24 },
   addBtnLarge: { backgroundColor: COLORS.primary, padding: 22, borderRadius: 22, alignItems: 'center', marginTop: 'auto', marginBottom: 15 },
   addBtnLargeText: { color: '#FFF', fontSize: 18, fontWeight: '900' }
+  ,
+  contactBox: { marginTop: 14, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#F0F0F0' },
+  bookingText: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 8 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
+  contactRowMinimal: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  contactNumber: { fontSize: 13, color: '#222', fontWeight: '700', marginLeft: 6 },
+  contactBtn: { marginLeft: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  callBtn: { backgroundColor: COLORS.primary },
+  msgBtn: { backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.primary },
+  contactBtnText: { color: '#FFF', fontWeight: '800' },
+  contactText: { fontSize: 13, color: '#666' }
+  ,
+  chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  chatContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '70%' },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderColor: '#F2F2F2' },
+  chatTitle: { fontSize: 16, fontWeight: '800', color: '#222' },
+  chatBody: { padding: 14, paddingBottom: 0 },
+  chatBubble: { padding: 10, borderRadius: 12, marginBottom: 8, maxWidth: '80%' },
+  chatBubbleVendor: { backgroundColor: '#F4F6F8', alignSelf: 'flex-start' },
+  chatBubbleUser: { backgroundColor: COLORS.primary, alignSelf: 'flex-end' },
+  chatBubbleText: { color: '#111' },
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1, borderColor: '#F2F2F2' },
+  chatTextInput: { flex: 1, backgroundColor: '#FAFAFA', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8 },
+  sendBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  sendBtnText: { color: '#FFF', fontWeight: '800' },
+  msgBtnText: { color: COLORS.primary, fontWeight: '700' }
+  ,
+  toastContainer: { position: 'absolute', top: 50, left: 20, right: 20, alignItems: 'center', zIndex: 9999 },
+  toastBubble: { backgroundColor: '#111', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, opacity: 0.95 },
+  toastText: { color: '#FFF', fontWeight: '700' }
 });

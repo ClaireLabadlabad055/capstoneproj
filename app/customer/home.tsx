@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, TextInput, SafeAreaView, StatusBar, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, TextInput, SafeAreaView, StatusBar, StyleSheet, Dimensions, Animated as RNAnimated } from 'react-native';
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
 
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
@@ -98,8 +99,10 @@ const ProductCard = ({ item, onPress }: any) => {
 export default function UserDashboard() {
   const { vendorProfile } = useVendor(); 
   const { userProfile } = useCart();
+  const { userData } = useAuth();
   const { products } = useProducts(); 
   const router = useRouter();
+  const { recentLoginStatus, setRecentLoginStatus } = useAuth();
 
   const [activeTab, setActiveTab] = useState('All Vendors');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,20 +128,18 @@ export default function UserDashboard() {
         setDbVendors(formatted);
       }
 
-      // Safe fetch for Profile Image
-      const { data: sessionData } = await supabase.auth.getUser();
-      if (sessionData?.user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('avatar_url')
-          .eq('id', sessionData.user.id)
-          .single();
-          
-        if (profileData?.avatar_url) setProfileImage(profileData.avatar_url);
-      }
+      // profile image is now synced via AuthContext.userData
     };
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (userData?.avatar_url) {
+      setProfileImage(`${userData.avatar_url}?t=${new Date().getTime()}`);
+    } else {
+      setProfileImage(null);
+    }
+  }, [userData]);
 
   const VENDORS = useMemo(() => [
     { id: 'v1', name: "Claire's Cookies", category: 'Bakery • Desserts', categoryType: 'Sweets', rating: '5.0', distance: '0.8km', image: require('../../assets/images/cst.jpg') },
@@ -162,7 +163,26 @@ export default function UserDashboard() {
     });
   }, [products, activeTab, searchQuery]);
 
-  const firstName = userProfile?.name ? userProfile.name.split(' ')[0] : 'Claire';
+  const firstName = userData?.full_name ? userData.full_name.split(' ')[0] : (userProfile?.name ? userProfile.name.split(' ')[0] : 'Claire');
+
+  const [showWelcome, setShowWelcome] = useState(false);
+  const welcomeAnim = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    if (recentLoginStatus) {
+      setShowWelcome(true);
+      RNAnimated.timing(welcomeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+
+      const hide = setTimeout(() => {
+        RNAnimated.timing(welcomeAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+          setShowWelcome(false);
+          setRecentLoginStatus(null);
+        });
+      }, 3400);
+
+      return () => clearTimeout(hide);
+    }
+  }, [recentLoginStatus]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -174,13 +194,22 @@ export default function UserDashboard() {
             <MaterialIcons name="location-pin" size={14} color={COLORS.secondary} />
             <Text style={styles.locationText} numberOfLines={1}>Toledo City, Cebu</Text>
           </View>
-          <TouchableOpacity onPress={() => router.push('/customer/profile')}>
-            {profileImage ? (
-               <Image source={{ uri: profileImage }} style={styles.profilePlaceholder} />
-            ) : (
-               <View style={styles.profilePlaceholder}><Text style={styles.profileInitial}>{firstName[0]}</Text></View>
-            )}
-          </TouchableOpacity>
+         <TouchableOpacity onPress={() => router.push('/customer/profile')}>
+  {userData?.avatar_url && userData.avatar_url !== "" ? (
+    <Image 
+      // The 'key' forces a re-render when the URL changes (prevents caching issues)
+      key={userData.avatar_url} 
+      source={{ uri: userData.avatar_url }} 
+      style={styles.profilePlaceholder} 
+    />
+  ) : (
+    <View style={styles.profilePlaceholder}>
+      <Text style={styles.profileInitial}>
+        {userData?.full_name ? userData.full_name[0].toUpperCase() : 'C'}
+      </Text>
+    </View>
+  )}
+</TouchableOpacity>
         </View>
         <Text style={styles.welcomeText}>Hi {firstName}, <Text style={styles.orderLabelText}>Don't Wait, Order Your Food!</Text></Text>
       </View>
@@ -221,6 +250,19 @@ export default function UserDashboard() {
           <View style={styles.emptyContainer}><Text style={styles.emptyText}>No vendors found</Text></View>
         )}
       </ScrollView>
+
+      {showWelcome && recentLoginStatus && (
+        <RNAnimated.View style={[styles.welcomeOverlay, { opacity: welcomeAnim, transform: [{ translateY: welcomeAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]} pointerEvents="none">
+          <View style={styles.welcomeCard}>
+            <Text style={styles.welcomeCardTitle}>{recentLoginStatus.isNew ? 'Welcome!' : `Welcome back, ${firstName}!`}</Text>
+            {recentLoginStatus.isNew ? (
+              <Text style={styles.welcomeCardSubtitle}>Check your email ({recentLoginStatus.email}) to verify your account.</Text>
+            ) : (
+              <Text style={styles.welcomeCardSubtitle}>Good to see you again. Enjoy your day!</Text>
+            )}
+          </View>
+        </RNAnimated.View>
+      )}
     </SafeAreaView>
   );
 }
@@ -269,4 +311,9 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: '#666' },
   emptyContainer: { padding: 20, alignItems: 'center' },
   emptyText: { color: '#AAA' }
+  ,
+  welcomeOverlay: { position: 'absolute', left: 20, right: 20, top: 80, alignItems: 'center', zIndex: 9999 },
+  welcomeCard: { backgroundColor: '#FFF', padding: 14, borderRadius: 12, elevation: 6, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, width: '100%', alignItems: 'center' },
+  welcomeCardTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
+  welcomeCardSubtitle: { marginTop: 6, color: '#666', textAlign: 'center' }
 });

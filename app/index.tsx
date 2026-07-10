@@ -28,16 +28,15 @@ export default function LandingPage() {
             {/* 🎯 CENTERED HERO SECTION */}
             <View style={styles.centerContent}>
               <View style={styles.logoIcon}>
-                <Feather name="shopping-bag" size={45} color="#FFF" />
+                <Feather name="shopping-bag" size={38} color="#FFF" />
               </View>
-              
-              <Text style={styles.appName}>ToGo</Text>
-              
+
+              <Text style={styles.appName}>ToledoGo</Text>
+
               <View style={styles.divider} />
-              
+
               <Text style={styles.description}>
-                Connecting you to the best local vendors in Toledo City. 
-                Fresh, fast, and right at your fingertips.
+                Local vendors from Toledo City — fresh, reliable, and ready to deliver.
               </Text>
 
               {/* Minimalist Feature Pills */}
@@ -98,39 +97,37 @@ const styles = StyleSheet.create({
     marginTop: height * 0.05
   },
   logoIcon: { 
-    width: 90, 
-    height: 90, 
+    width: 76, 
+    height: 76, 
     backgroundColor: COLORS.primary || '#3182CE', 
-    borderRadius: 28, 
+    borderRadius: 18, 
     justifyContent: 'center', 
     alignItems: 'center',
-    marginBottom: 25,
-    shadowColor: COLORS.primary || '#3182CE',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 8
+    marginBottom: 18,
+    shadowColor: 'transparent',
+    elevation: 2
   },
   appName: { 
-    fontSize: 52, 
-    fontWeight: '900', 
-    color: '#1A202C', 
-    letterSpacing: -2,
-    textAlign: 'center'
+    fontSize: 40, 
+    fontWeight: '800', 
+    color: '#0F1724', 
+    letterSpacing: -0.8,
+    textAlign: 'center',
+    marginBottom: 6
   },
   divider: {
-    width: 60,
-    height: 4,
+    width: 36,
+    height: 3,
     backgroundColor: COLORS.primary || '#3182CE',
     borderRadius: 2,
-    marginVertical: 15
+    marginVertical: 12
   },
   description: { 
-    fontSize: 18, 
-    color: '#4A5568', 
+    fontSize: 15, 
+    color: '#546070', 
     textAlign: 'center', 
-    lineHeight: 28, 
-    paddingHorizontal: 15,
+    lineHeight: 22, 
+    paddingHorizontal: 18,
     fontWeight: '500'
   },
   pillContainer: { 
@@ -141,18 +138,14 @@ const styles = StyleSheet.create({
   },
   pill: { 
     backgroundColor: '#FFFFFF', 
-    paddingHorizontal: 14, 
-    paddingVertical: 8, 
-    borderRadius: 20,
+    paddingHorizontal: 12, 
+    paddingVertical: 7, 
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
+    borderColor: '#F1F5F9'
   },
   pillText: { 
-    color: '#4A5568', 
+    color: '#64748B', 
     fontSize: 13, 
     fontWeight: '700' 
   },

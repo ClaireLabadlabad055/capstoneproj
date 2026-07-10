@@ -23,14 +23,15 @@ export default function CartScreen() {
   const { cartItems, removeFromCart, updateQty } = useCart(); 
 
   // ✅ FIX: Added Number conversion and guard (|| 0) to prevent NaN/Undefined errors
-  const subtotal = cartItems.reduce((acc, item) => {
+  const subtotal = (cartItems as any[]).reduce((acc, item) => {
     const price = Number(item.price) || 0;
     return acc + (price * (item.qty || 1));
   }, 0);
 
   const deliveryFee = cartItems.length > 0 ? 15 : 0;
 
-  const renderItem = ({ item }) => {
+  const renderItem = (props: any) => {
+    const item = props.item;
     // ✅ FIX: Ensure price is treated as a number
     const displayPrice = Number(item.price) || 0;
 

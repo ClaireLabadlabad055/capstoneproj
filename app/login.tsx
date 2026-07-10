@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -14,13 +14,17 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { supabase } from '../lib/supabaseClient'; // Ensure this path points to your supabase client file
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { recentLoginStatus, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [greetName, setGreetName] = useState<string | null>(null);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -29,25 +33,34 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.toLowerCase().trim(),
-      password: password,
-    });
-
-    if (error) {
-      Alert.alert("Login Failed", error.message);
+    try {
+      await login(email.toLowerCase().trim(), password);
+      router.replace('/customer/home');
+    } catch (error: any) {
+      Alert.alert("Login Failed", error.message || 'Unable to sign in.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (data?.session) {
-      await supabase.auth.setSession(data.session);
-    }
-
-    setLoading(false);
-    router.replace('/customer/home');
   };
+
+  React.useEffect(() => {
+    const tryPrefill = async () => {
+      // if recentLoginStatus is present, prefer its email
+      const seedEmail = (recentLoginStatus && recentLoginStatus.email) || (params?.email as string | undefined) || undefined;
+      if (seedEmail) {
+        setEmail(seedEmail);
+        try {
+          const { data } = await supabase.from('customers').select('full_name').eq('email', seedEmail).maybeSingle();
+          if (data && data.full_name) {
+            setGreetName(data.full_name.split(' ')[0]);
+          }
+        } catch (e) {
+          console.error('Error fetching name for login header', e);
+        }
+      }
+    };
+    tryPrefill();
+  }, [params.email, recentLoginStatus]);
 
   return (
     <View style={styles.container}>
@@ -68,17 +81,16 @@ export default function LoginScreen() {
         >
           <ScrollView 
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContainer}
+            contentContainerStyle={styles.scrollContent}
           >
-            <View style={{ height: 170 }} />
-              
-            <View style={styles.header}>
-              <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
-              <View style={styles.brandLine} />
-            </View>
+            <View style={styles.card}>
+              <View style={styles.header}>
+                <Text style={styles.title}>{greetName ? `Welcome back, ${greetName}` : 'Welcome Back'}</Text>
+                <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
+                <View style={styles.brandLine} />
+              </View>
 
-            <View style={styles.form}>
+              <View style={styles.form}>
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email Address</Text>
                 <TextInput 
@@ -121,6 +133,7 @@ export default function LoginScreen() {
                   {loading ? "LOGGING IN..." : "LOG IN"}
                 </Text>
               </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.footer}>
@@ -157,6 +170,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, 
     paddingBottom: 30 
   },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 30 },
+  card: { backgroundColor: '#FFFFFF', padding: 22, borderRadius: 16, width: '100%', maxWidth: 520, alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 6 },
   header: { 
     marginBottom: 24,
     alignItems: 'flex-start' 

@@ -14,6 +14,7 @@ import {
     Text, TextInput, TouchableOpacity,
     View
 } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { COLORS } from '../styles/globalStyles';
 
@@ -21,17 +22,17 @@ const DELICACY_TYPES = ['Native Delicacies', 'Kakanin', 'Pastries', 'Seafood', '
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { refreshUserData } = useAuth();
   const [role, setRole] = useState<'customer' | 'merchant'>('customer');
   
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [address, setAddress] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [selectedDelicacy, setSelectedDelicacy] = useState('');
   const [barangay, setBarangay] = useState('');
-  const [pickupLandmark, setPickupLandmark] = useState('');
-  const [landmarkDetails, setLandmarkDetails] = useState('');
   const [verificationDoc, setVerificationDoc] = useState<string | null>(null);
 
   const pickDocument = async () => {
@@ -45,9 +46,11 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     try {
+      const normalizedEmail = email.toLowerCase().trim();
+
       // 1. Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({ 
-        email, 
+        email: normalizedEmail, 
         password 
       });
       if (authError) throw authError;
@@ -57,8 +60,10 @@ export default function RegisterScreen() {
       const { error: profileError } = await supabase.from('profiles').insert([{
         id: authData.user.id,
         full_name: fullName,
+        email: normalizedEmail,
         role: role,
         phone: phone,
+        address: address,
       }]);
       if (profileError) throw profileError;
 
@@ -87,20 +92,35 @@ export default function RegisterScreen() {
           business_name: businessName,
           delicacy_type: selectedDelicacy,
           barangay: barangay,
-          pickup_landmark: pickupLandmark,
-          landmark_details: landmarkDetails,
           verification_doc_url: finalDocPath,
         }]);
         if (merchantError) throw merchantError;
 
+        const { error: customerError } = await supabase.from('customers').insert([{
+          id: authData.user.id,
+          full_name: fullName,
+          email: normalizedEmail,
+          phone,
+          address,
+          role,
+          created_at: new Date().toISOString()
+        }]);
+        if (customerError) throw customerError;
       } else {
         const { error: customerError } = await supabase.from('customers').insert([{
           id: authData.user.id,
+          full_name: fullName,
+          email: normalizedEmail,
+          phone,
+          address,
+          role,
+          created_at: new Date().toISOString()
         }]);
         if (customerError) throw customerError;
       }
 
-      router.replace(role === 'merchant' ? '/vendor/home' : '/customer/home');
+      // Do not auto sign-in; redirect to login and prefill email so user can verify/check email
+      router.replace({ pathname: '/login', params: { email: normalizedEmail } });
     } catch (e: any) {
       console.error("Registration Error:", e);
       Alert.alert("Registration Error", e.message);
@@ -110,8 +130,8 @@ export default function RegisterScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Ionicons name="chevron-back" size={28} color="#1A202C" />
+      <TouchableOpacity onPress={() => router.back()} style={styles.floatingBackBtn} activeOpacity={0.6}>
+        <Ionicons name="chevron-back" size={24} color="#1A202C" />
       </TouchableOpacity>
 
       <SafeAreaView style={{ flex: 1 }}>
@@ -120,7 +140,8 @@ export default function RegisterScreen() {
             <Text style={styles.title}>{role === 'merchant' ? "Register Home Kitchen" : "Create Account"}</Text>
           </View>
 
-          <View style={styles.roleToggle}>
+          <View style={styles.card}>
+            <View style={styles.roleToggle}>
             <TouchableOpacity style={[styles.roleTab, role === 'customer' && styles.activeTab]} onPress={() => setRole('customer')}>
               <Text style={[styles.tabText, role === 'customer' && styles.activeTabText]}>Customer</Text>
             </TouchableOpacity>
@@ -129,7 +150,7 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.formContainer}>
+              <View style={styles.formContainer}>
             <TextInput style={styles.input} placeholder="Full Name" value={fullName} onChangeText={setFullName} placeholderTextColor="#A0AEC0" />
             <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} placeholderTextColor="#A0AEC0" />
             <TextInput style={styles.input} placeholder="Phone" value={phone} onChangeText={setPhone} placeholderTextColor="#A0AEC0" />
@@ -147,17 +168,16 @@ export default function RegisterScreen() {
                   ))}
                 </View>
                 <TextInput style={styles.input} placeholder="Barangay" value={barangay} onChangeText={setBarangay} placeholderTextColor="#A0AEC0" />
-                <TextInput style={styles.input} placeholder="Public Landmark" value={pickupLandmark} onChangeText={setPickupLandmark} placeholderTextColor="#A0AEC0" />
-                <TextInput style={styles.input} placeholder="Specific Details" value={landmarkDetails} onChangeText={setLandmarkDetails} placeholderTextColor="#A0AEC0" />
                 <TouchableOpacity style={styles.uploadBtn} onPress={pickDocument}>
                   <Text style={styles.uploadText}>{verificationDoc ? "Document Attached" : "Upload Proof of Residency"}</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <TouchableOpacity style={styles.submitBtn} onPress={handleRegister}>
-              <Text style={styles.submitText}>REGISTER SECURELY</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleRegister}>
+                <Text style={styles.submitText}>REGISTER SECURELY</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -167,9 +187,23 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  scroll: { padding: 24, paddingBottom: 50, alignItems: 'center' },
-  backBtn: { marginTop: Platform.OS === 'ios' ? 60 : 30, marginLeft: 24, alignSelf: 'flex-start', marginBottom: 10 },
-  centerContainer: { alignItems: 'center', marginBottom: 24 },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 50, alignItems: 'center' },
+  backBtn: { marginTop: Platform.OS === 'ios' ? 30 : 20, marginLeft: 24, alignSelf: 'flex-start', marginBottom: 10 },
+  floatingBackBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 55 : 40,
+    left: 16,
+    zIndex: 9999,
+    elevation: 99,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+  },
+  centerContainer: { alignItems: 'center', marginBottom: 24, marginTop: Platform.OS === 'ios' ? 70 : 50 },
   title: { fontSize: 24, fontWeight: '800', color: '#1A202C' },
   roleToggle: { flexDirection: 'row', backgroundColor: '#F7FAFC', padding: 4, borderRadius: 14, marginBottom: 24, width: '100%', maxWidth: 400 },
   roleTab: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
@@ -177,6 +211,7 @@ const styles = StyleSheet.create({
   tabText: { fontWeight: '600', color: '#718096' },
   activeTabText: { color: COLORS.primary || '#3182CE' },
   formContainer: { width: '100%', maxWidth: 400 },
+  card: { backgroundColor: '#FFFFFF', padding: 20, borderRadius: 14, width: '100%', maxWidth: 520, alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 6, marginBottom: 12 },
   input: { backgroundColor: '#F7FAFC', padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#EDF2F7', color: '#2D3748', width: '100%' },
   label: { fontSize: 13, fontWeight: '700', color: '#4A5568', marginBottom: 10, textAlign: 'center' },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 16 },

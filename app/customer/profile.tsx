@@ -22,48 +22,38 @@ import { supabase } from '../../lib/supabaseClient';
 
 export default function Profile() {
   const router = useRouter();
-  const { user, userData, loading: authLoading, logout } = useAuth();
-  const [activeUserId, setActiveUserId] = useState<string | null>(null);
+  const { user, userData, loading: authLoading, logout, refreshUserData, updateLocalUserData } = useAuth();
+  
   const [view, setView] = useState<'menu' | 'address' | 'settings'>('menu');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
 
   const [tempAddress, setTempAddress] = useState({
-    name: userData?.name || "Claire Dela Cruz",
-    details: "Poblacion, Toledo City, Cebu",
+    name: userData?.full_name || "User",
+    details: userData?.address || "",
+    phone: userData?.phone || "",
   });
 
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+
   useEffect(() => {
-    const getActiveUser = async () => {
-      if (user?.id) {
-        setActiveUserId(user.id);
-        return;
-      }
+    if (userData) {
+      setTempAddress({
+        name: userData.full_name || "User",
+        details: userData.address || "",
+        phone: userData.phone || "",
+      });
+    }
+  }, [userData]);
 
-      if (userData?.uid) {
-        setActiveUserId(userData.uid);
-        return;
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.id) {
-        setActiveUserId(session.user.id);
-        return;
-      }
-
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-      if (!userError && authUser?.id) {
-        setActiveUserId(authUser.id);
-      }
-    };
-
-    getActiveUser();
-
+  useEffect(() => {
     if (userData?.avatar_url) {
       setProfileImage(`${userData.avatar_url}?t=${new Date().getTime()}`);
     }
-  }, [user, userData]);
+  }, [userData]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -91,68 +81,54 @@ export default function Profile() {
   };
 
   const uploadAvatar = async (base64: string) => {
-    setUploading(true);
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user?.id) {
-        throw new Error('You need to be signed in to upload a profile photo.');
-      }
+  if (!user) return;
+  setUploading(true);
+  try {
+    const filePath = `${user.id}/${Date.now()}.jpg`;
+    const fileBuffer = decode(base64);
 
-      const currentUserId = session.user.id;
-      setActiveUserId(currentUserId);
+    const { error: uploadError } = await supabase.storage
+      .from('avatar')
+      .upload(filePath, fileBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
 
-      const filePath = `${currentUserId}/${Date.now()}.jpg`;
-      const fileBuffer = decode(base64);
-      const buckets = ['avatars', 'avatar', 'profile-images', 'images'];
+    if (uploadError) throw uploadError;
 
-      let uploadedUrl: string | null = null;
-      let lastError: Error | null = null;
+    const { data } = supabase.storage.from('avatar').getPublicUrl(filePath);
+    
+    // 1. Update Database
+const { error: customerUpdateError } = await supabase
+      .from('customers')
+      .update({ avatar_url: data.publicUrl })
+      .eq('id', user.id);
 
-      for (const bucketName of buckets) {
-        const { error: uploadError } = await supabase.storage
-          .from(bucketName)
-          .upload(filePath, fileBuffer, {
-            contentType: 'image/jpeg',
-            upsert: true,
-          });
+    const { error: profileUpdateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: data.publicUrl })
+      .eq('id', user.id);
 
-        if (uploadError) {
-          lastError = uploadError as Error;
-          continue;
-        }
-
-        const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-        if (publicData?.publicUrl) {
-          uploadedUrl = publicData.publicUrl;
-          break;
-        }
-
-        try {
-          const { data: signedData } = await supabase.storage.from(bucketName).createSignedUrl(filePath, 60 * 60 * 24);
-          if (signedData?.signedUrl) {
-            uploadedUrl = signedData.signedUrl;
-            break;
-          }
-        } catch (signedError) {
-          console.warn('Signed URL fallback failed', signedError);
-        }
-      }
-
-      if (!uploadedUrl) {
-        const message = lastError instanceof Error ? lastError.message : 'Unable to upload image to storage.';
-        throw new Error(message);
-      }
-
-      setProfileImage(`${uploadedUrl}?t=${new Date().getTime()}`);
-      Alert.alert('Success', 'Photo updated!');
-    } catch (error) {
-      console.error(error);
-      const message = error instanceof Error ? error.message : 'Photo upload failed. Please check the storage bucket and database permissions.';
-      Alert.alert('Error', message);
-    } finally {
-      setUploading(false);
+    if (customerUpdateError && profileUpdateError) throw customerUpdateError || profileUpdateError;
+    
+    // 2. SYNC: Update Local Context and Refresh
+    // This calls the helper we added to AuthContext to update the UI instantly
+    if (typeof updateLocalUserData === 'function') {
+      updateLocalUserData({ avatar_url: data.publicUrl });
     }
-  };
+    
+    // This triggers a full refresh from the DB to be safe
+    if (user?.id) await refreshUserData(user.id);
+    
+    setProfileImage(`${data.publicUrl}?t=${new Date().getTime()}`);
+    Alert.alert('Success', 'Photo updated!');
+  } catch (error) {
+    console.error(error);
+    Alert.alert('Error', 'Upload failed. Ensure bucket is public.');
+  } finally {
+    setUploading(false);
+  }
+};
 
   if (authLoading) {
     return <View style={styles.center}><ActivityIndicator size="large" /></View>;
@@ -188,14 +164,15 @@ export default function Profile() {
                   <Feather name="camera" size={16} color="#FFF" />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.userName}>{userData?.name || "User"}</Text>
+              <Text style={styles.userName}>{userData?.full_name || "User"}</Text>
+              {userData?.phone ? <Text style={styles.userPhone}>{userData.phone}</Text> : null}
             </View>
 
             <View style={styles.menuContainer}>
               <TouchableOpacity style={styles.menuItem} onPress={() => setView('address')}>
                 <View style={[styles.iconBg, {backgroundColor: '#FDF5F2'}]}><Feather name="map-pin" size={20} color="#8D493A" /></View>
                 <View style={styles.menuTextContent}>
-                  <Text style={styles.menuLabel}>Shipping Address</Text>
+                  <Text style={styles.menuLabel}>Address</Text>
                   <Text style={styles.menuSubLabel}>{tempAddress.details}</Text>
                 </View>
                 <Feather name="chevron-right" size={20} color="#CCC" />
@@ -207,7 +184,18 @@ export default function Profile() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={async () => {
+                try {
+                  await logout();
+                  router.replace('/login');
+                } catch (err) {
+                  console.error('Logout failed', err);
+                  Alert.alert('Logout failed', 'Please try again.');
+                }
+              }}
+            >
               <Feather name="log-out" size={18} color="#FF3B30" />
               <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
@@ -218,18 +206,108 @@ export default function Profile() {
           <View style={styles.formCard}>
             <Text style={styles.inputLabel}>Full Name</Text>
             <TextInput style={styles.input} value={tempAddress.name} onChangeText={(t) => setTempAddress({...tempAddress, name: t})} />
-            <TouchableOpacity style={styles.saveBtn} onPress={() => setView('menu')}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
+            <Text style={styles.inputLabel}>Phone Number</Text>
+            <TextInput style={styles.input} value={tempAddress.phone} onChangeText={(t) => setTempAddress({...tempAddress, phone: t})} keyboardType="phone-pad" />
+            <Text style={styles.inputLabel}>Shipping Address</Text>
+            <TextInput style={styles.input} value={tempAddress.details} onChangeText={(t) => setTempAddress({...tempAddress, details: t})} />
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={async () => {
+                if (!user) return;
+                try {
+                  const updates = {
+                    full_name: tempAddress.name,
+                    phone: tempAddress.phone,
+                    address: tempAddress.details,
+                  };
+
+                  let updateError = null;
+
+                  const { error: customerUpdateError } = await supabase
+                    .from('customers')
+                    .update(updates)
+                    .eq('id', user.id);
+
+                  updateError = customerUpdateError;
+
+                  if (updateError) {
+                    const { error: profileUpdateError } = await supabase
+                      .from('profiles')
+                      .update(updates)
+                      .eq('id', user.id);
+                    updateError = profileUpdateError;
+                  }
+
+                  if (updateError) throw updateError;
+
+                  if (typeof updateLocalUserData === 'function') {
+                    updateLocalUserData(updates);
+                  }
+                  if (user?.id) await refreshUserData(user.id);
+                  Alert.alert('Saved', 'Profile and shipping address updated.');
+                  setView('menu');
+                } catch (err) {
+                  console.error('Update failed', err);
+                  Alert.alert('Error', 'Could not save your profile.');
+                }
+              }}
+            >
+              <Text style={styles.saveBtnText}>Save Changes</Text>
+            </TouchableOpacity>
           </View>
         )}
 
         {view === 'settings' && (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Preferences</Text>
+            <Text style={styles.formTitle}>Account Settings</Text>
+
+            <Text style={[styles.inputLabel, { marginTop: 6 }]}>Change Password</Text>
+            <TextInput style={styles.input} placeholder="New password" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+            <TextInput style={styles.input} placeholder="Confirm new password" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+
+            <Text style={[styles.inputLabel, { marginTop: 6 }]}>Change Email</Text>
+            <TextInput style={styles.input} placeholder="New email address" keyboardType="email-address" autoCapitalize="none" value={newEmail} onChangeText={setNewEmail} />
+
+            <View style={{ height: 10 }} />
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Push Notifications</Text>
               <Switch value={isNotificationsEnabled} onValueChange={setIsNotificationsEnabled} trackColor={{ true: "#4A342E" }} />
             </View>
-            <TouchableOpacity style={styles.saveBtn} onPress={() => setView('menu')}><Text style={styles.saveBtnText}>Back to Profile</Text></TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={async () => {
+                try {
+                  // 1) Change password if provided
+                  if (newPassword) {
+                    if (newPassword !== confirmPassword) {
+                      Alert.alert('Error', 'Passwords do not match.');
+                      return;
+                    }
+                    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+                    if (error) throw error;
+                  }
+
+
+                  // 2) Change email if provided
+                  if (newEmail && newEmail.trim() !== '') {
+                    const { data: emailData, error: emailErr } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() });
+                    if (emailErr) throw emailErr;
+                  }
+
+                  // Refresh local context
+                  if (user?.id) await refreshUserData(user.id);
+                  setNewPassword(''); setConfirmPassword('');
+                  Alert.alert('Saved', 'Account settings updated.');
+                  setView('menu');
+                } catch (err: any) {
+                  console.error('Settings update failed', err);
+                  Alert.alert('Error', err?.message || 'Could not save settings.');
+                }
+              }}
+            >
+              <Text style={styles.saveBtnText}>Save Changes</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -251,6 +329,7 @@ const styles = StyleSheet.create({
   avatarImage: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: '#FFF' },
   cameraBtn: { position: 'absolute', bottom: 5, right: 0, backgroundColor: '#4A342E', width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', elevation: 5 },
   userName: { fontSize: 24, fontWeight: '900', color: '#4A342E' },
+  userPhone: { fontSize: 14, color: '#666', marginTop: 6 },
   menuContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 10, elevation: 2 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: '#F9F9F9' },
   iconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
