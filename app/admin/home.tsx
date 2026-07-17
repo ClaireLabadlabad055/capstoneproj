@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../../lib/storage';
 import { 
   View, 
   Text, 
@@ -77,12 +77,12 @@ export default function AdminDashboard() {
 
       let localPendingAdjustment = 0;
       try {
-        const pendingSignalRaw = await AsyncStorage.getItem('approval_sync_flag');
+        const pendingSignalRaw = await storage.getItem('approval_sync_flag');
         if (pendingSignalRaw) {
           const pendingSignal = JSON.parse(pendingSignalRaw);
           localPendingAdjustment = Number(pendingSignal?.delta || 0);
           if (localPendingAdjustment > 0) {
-            await AsyncStorage.removeItem('approval_sync_flag');
+            await storage.removeItem('approval_sync_flag');
           }
         }
       } catch (storageError) {

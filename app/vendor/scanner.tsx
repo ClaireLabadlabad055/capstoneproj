@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useCart } from '../../context/CartContext';
 import { COLORS } from '../../styles/globalStyles';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabaseClient';
 
 export default function ScannerScreen() {
   const router = useRouter();
@@ -25,40 +26,84 @@ export default function ScannerScreen() {
     );
   }
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
+    if (scanned) return;
     setScanned(true);
-    
+
+    let orderId = data;
     try {
-      // Try to parse if it's JSON, otherwise treat as ID
-      let orderId = data;
       if (data.startsWith('{')) {
         const parsed = JSON.parse(data);
-        orderId = parsed.id || parsed.orderId;
+        orderId = parsed.id || parsed.orderId || parsed.reference || parsed.referenceNo || data;
+      }
+    } catch {
+      // Fall back to using the raw string value below.
+    }
+
+    const normalizedOrderId = String(orderId || '').trim();
+    if (!normalizedOrderId) {
+      setScanned(false);
+      Alert.alert("Invalid QR", "The scanned code did not contain an order reference.");
+      return;
+    }
+
+    try {
+      const { data: orderRow, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', normalizedOrderId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      let foundOrder = orderRow;
+      if (!foundOrder) {
+        foundOrder = orders.find((o: any) =>
+          String(o.id) === normalizedOrderId ||
+          String(o.id).toLowerCase() === normalizedOrderId.toLowerCase() ||
+          String(o.id).endsWith(normalizedOrderId)
+        );
       }
 
-      const foundOrder = orders.find(o => o.id === orderId);
-
       if (foundOrder) {
-        setScannedOrder(foundOrder);
+        setScannedOrder({
+          ...foundOrder,
+          customerName: foundOrder.customer_name || foundOrder.customerName || 'Walk-in Customer',
+          items: Array.isArray(foundOrder.items)
+            ? foundOrder.items
+            : (Array.isArray(foundOrder.order_details) ? foundOrder.order_details : []),
+          total: foundOrder.total ?? foundOrder.amount ?? 0,
+        });
       } else {
-        Alert.alert("Not Found", "This order record does not exist on this device.", [
+        setScanned(false);
+        Alert.alert("Not Found", "This order could not be found on this device or in the database.", [
           { text: "Try Again", onPress: () => setScanned(false) }
         ]);
       }
     } catch (e) {
-      // If it's just a raw ID string
-      const foundOrder = orders.find(o => o.id === data);
-      if (foundOrder) setScannedOrder(foundOrder);
-      else {
-        setScanned(false);
-        Alert.alert("Invalid QR", "Format not recognized.");
-      }
+      console.error('Scanner lookup failed:', e);
+      setScanned(false);
+      Alert.alert("Lookup Failed", "Could not retrieve the order right now.");
     }
   };
 
-  const confirmPickup = () => {
-    updateOrderStatus(scannedOrder.id, 'Completed');
-    router.back(); 
+  const confirmPickup = async () => {
+    if (!scannedOrder?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'Completed' })
+        .eq('id', String(scannedOrder.id));
+
+      if (error) throw error;
+
+      updateOrderStatus(String(scannedOrder.id), 'Completed');
+      router.back();
+    } catch (e) {
+      console.error('Failed to complete order:', e);
+      Alert.alert("Update Failed", "The order could not be marked complete.");
+    }
   };
 
   return (

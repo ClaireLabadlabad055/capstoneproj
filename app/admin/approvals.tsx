@@ -10,7 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../../lib/storage';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../styles/globalStyles';
@@ -156,7 +156,7 @@ export default function AdminApprovals() {
               setMerchantApplications(prev => prev.filter(app => app.id !== id));
               setCustomerApplications(prev => prev.filter(app => app.id !== id));
               try {
-                await AsyncStorage.setItem('approval_sync_flag', JSON.stringify({ timestamp: Date.now(), delta: 1 }));
+                await storage.setItem('approval_sync_flag', JSON.stringify({ timestamp: Date.now(), delta: 1 }));
               } catch (storageError) {
                 console.warn('Failed to persist approval sync flag:', storageError);
               }

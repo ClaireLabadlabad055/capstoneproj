@@ -29,7 +29,7 @@ import { COLORS } from '../../styles/globalStyles';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 50) / 2;
 
-const VendorProductCard = ({ item, onDelete }: { item: any, onDelete: (id: string) => void }) => {
+const VendorProductCard = ({ item, onDelete, onEdit, onToggleAvailability }: { item: any, onDelete: (id: string) => void, onEdit: (item: any) => void, onToggleAvailability: (item: any) => void }) => {
   const renderImg = () => {
     if (typeof item.img === 'number') return item.img;
     if (item.img?.uri) return { uri: item.img.uri };
@@ -58,7 +58,14 @@ const VendorProductCard = ({ item, onDelete }: { item: any, onDelete: (id: strin
         <Text style={styles.popularItemDesc} numberOfLines={1}>{item.desc || "Toledo's finest."}</Text>
         <View style={styles.priceRow}>
           <Text style={styles.popularItemPrice}>₱{item.price}</Text>
-          <View style={styles.editIconSmall}><Feather name="edit-3" size={14} color={COLORS.primary} /></View>
+          <View style={styles.cardActionsRow}>
+            <TouchableOpacity style={styles.editIconSmall} onPress={() => onEdit(item)}>
+              <Feather name="edit-3" size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.availabilityToggle, item.stock === 0 ? styles.availabilityToggleOff : styles.availabilityToggleOn]} onPress={() => onToggleAvailability(item)}>
+              <Text style={styles.availabilityToggleText}>{item.stock === 0 ? 'Out' : 'In'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </View>
@@ -83,6 +90,8 @@ export default function VendorInventory() {
   const [newCategory, setNewCategory] = useState('Snacks'); // Category state preserved
   const [orderType, setOrderType] = useState('Single Order'); 
   const [newProductImage, setNewProductImage] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   const refreshChatMessages = async (vendorId = user?.id) => {
     if (!vendorId) return;
@@ -160,41 +169,91 @@ export default function VendorInventory() {
     await refreshChatMessages(user.id);
   };
 
-  const handleAddProduct = async () => {
+  const resetProductForm = () => {
+    setNewName('');
+    setNewPrice('');
+    setNewStock('');
+    setNewDesc('');
+    setNewCategory('Snacks');
+    setOrderType('Single Order');
+    setNewProductImage(null);
+    setEditMode(false);
+    setEditingProductId(null);
+  };
+
+  const openEditProduct = (item: any) => {
+    setEditMode(true);
+    setEditingProductId(item.id);
+    setNewName(item.name || '');
+    setNewPrice(String(item.price ?? ''));
+    setNewStock(String(item.stock ?? ''));
+    setNewDesc(item.desc || '');
+    setNewCategory(item.category || 'Snacks');
+    setOrderType(item.orderType || 'Single Order');
+    setNewProductImage(typeof item.img === 'string' ? item.img : (item.image_url || item.image || null));
+    setModalVisible(true);
+  };
+
+  const handleToggleAvailability = async (item: any) => {
+    const nextStock = item.stock === 0 ? 1 : 0;
+    try {
+      const { error } = await supabase.from('products').update({ stock: nextStock }).eq('id', item.id);
+      if (error) throw error;
+
+      if (typeof (item as any).id === 'string') {
+        await supabase.from('products').update({ stock: nextStock }).eq('id', item.id);
+      }
+
+      Alert.alert('Availability updated', nextStock === 0 ? 'Item marked out of stock.' : 'Item marked available.');
+    } catch (error: any) {
+      Alert.alert('Update failed', error?.message || 'Unable to change availability.');
+    }
+  };
+
+  const handleSaveProduct = async () => {
     if (!newName || !newPrice) return Alert.alert('Error', 'Required fields missing');
 
-    const productId = Date.now().toString();
-    let imageUrl = null;
-
-    if (newProductImage) {
-      const uploadResult = await uploadProductImage({ uri: newProductImage, productId });
-      if (!uploadResult.success) {
-        Alert.alert('Upload failed', uploadResult.error?.message || 'Unable to upload the product photo.');
-        return;
+    try {
+      let imageUrl = null;
+      if (newProductImage && typeof newProductImage === 'string' && !newProductImage.startsWith('http') && !newProductImage.startsWith('data:')) {
+        const uploadResult = await uploadProductImage({ uri: newProductImage, productId: editingProductId || Date.now().toString() });
+        if (!uploadResult.success) {
+          Alert.alert('Upload failed', uploadResult.error?.message || 'Unable to upload the product photo.');
+          return;
+        }
+        imageUrl = uploadResult.publicUrl;
       }
-      imageUrl = uploadResult.publicUrl;
-    }
 
-    const result = await addProduct({
-      id: productId,
-      name: newName,
-      price: newPrice,
-      stock: parseInt(newStock) || 0,
-      desc: newDesc || 'A local favorite.',
-      category: newCategory,
-      orderType,
-      vendorName: vendorProfile.name,
-      vendorId: vendorProfile?.id || null,
-      img: imageUrl || (newProductImage ? { uri: newProductImage } : null),
-    });
+      const payload = {
+        name: newName,
+        price: String(newPrice),
+        stock: Number(newStock || 0),
+        desc: newDesc || 'A local favorite.',
+        category: newCategory,
+        orderType,
+        vendorName: vendorProfile?.name || vendorProfile?.business_name || userData?.full_name || 'Vendor',
+        vendor_name: vendorProfile?.name || vendorProfile?.business_name || userData?.full_name || 'Vendor',
+        vendor_id: vendorProfile?.id || user?.id || null,
+        ...(imageUrl ? { img: imageUrl, image_url: imageUrl } : {}),
+      };
 
-    if (result?.success !== false) {
+      if (editMode && editingProductId) {
+        const { error } = await supabase.from('products').update(payload).eq('id', editingProductId);
+        if (error) throw error;
+      } else {
+        const productId = Date.now().toString();
+        const result = await addProduct({
+          id: productId,
+          ...payload,
+          img: imageUrl || (newProductImage ? { uri: newProductImage } : null),
+        });
+        if (result?.success === false) throw new Error('Unable to add product.');
+      }
+
       setModalVisible(false);
-      setNewName('');
-      setNewPrice('');
-      setNewStock('');
-      setNewDesc('');
-      setNewProductImage(null);
+      resetProductForm();
+    } catch (error: any) {
+      Alert.alert('Save failed', error?.message || 'Unable to save the product.');
     }
   };
 
@@ -247,8 +306,8 @@ export default function VendorInventory() {
           const nextItem = section.data[index + 1];
           return (
             <View style={styles.gridRow}>
-              <VendorProductCard item={section.data[index]} onDelete={deleteProduct} />
-              {nextItem ? <VendorProductCard item={nextItem} onDelete={deleteProduct} /> : <View style={{ width: CARD_WIDTH }} />}
+              <VendorProductCard item={section.data[index]} onDelete={deleteProduct} onEdit={openEditProduct} onToggleAvailability={handleToggleAvailability} />
+              {nextItem ? <VendorProductCard item={nextItem} onDelete={deleteProduct} onEdit={openEditProduct} onToggleAvailability={handleToggleAvailability} /> : <View style={{ width: CARD_WIDTH }} />}
             </View>
           );
         }}
@@ -289,7 +348,7 @@ export default function VendorInventory() {
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>New Product Entry</Text>
+                <Text style={styles.modalTitle}>{editMode ? 'Edit Product' : 'New Product Entry'}</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <TouchableOpacity style={styles.productPhotoPicker} onPress={async () => {
                          let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1, base64: true });
@@ -336,8 +395,8 @@ export default function VendorInventory() {
                         </View>
                     </View>
 
-                    <TouchableOpacity style={styles.saveBtn} onPress={handleAddProduct}><Text style={styles.saveBtnText}>Save Product</Text></TouchableOpacity>
-                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}><Text style={styles.cancelBtnText}>Discard</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProduct}><Text style={styles.saveBtnText}>{editMode ? 'Save Changes' : 'Save Product'}</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => { setModalVisible(false); resetProductForm(); }}><Text style={styles.cancelBtnText}>Discard</Text></TouchableOpacity>
                 </ScrollView>
             </View>
         </View>
@@ -386,7 +445,12 @@ const styles = StyleSheet.create({
   popularItemDesc: { fontSize: 10, color: '#AAA', marginTop: 3, marginBottom: 10 },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   popularItemPrice: { fontSize: 17, fontWeight: '900', color: COLORS.primary },
+  cardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   editIconSmall: { backgroundColor: '#F0F0F0', padding: 8, borderRadius: 10 },
+  availabilityToggle: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  availabilityToggleOn: { backgroundColor: '#E9F9EE', borderColor: '#4CAF50' },
+  availabilityToggleOff: { backgroundColor: '#FFF3F3', borderColor: '#F44336' },
+  availabilityToggleText: { fontSize: 11, fontWeight: '800' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#FFF', borderRadius: 35, padding: 25, maxHeight: '90%' },
   modalTitle: { fontSize: 22, fontWeight: '900', color: COLORS.secondary, marginBottom: 20, textAlign: 'center' },

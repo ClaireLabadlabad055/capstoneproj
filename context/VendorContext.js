@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabaseClient';
+import storage from '../lib/storage';
 import { useAuth } from './AuthContext';
 
 const VendorContext = createContext();
@@ -74,7 +74,7 @@ const updateWithFallback = async (table, id, payload, fallbackPayloads = []) => 
 const saveVendorProfileToStorage = async (userId, profile) => {
   if (!userId) return;
   try {
-    await AsyncStorage.setItem(getVendorStorageKey(userId), JSON.stringify(profile));
+    await storage.setItem(getVendorStorageKey(userId), JSON.stringify(profile));
   } catch (error) {
     console.error('Failed to persist vendor profile:', error);
   }
@@ -83,7 +83,7 @@ const saveVendorProfileToStorage = async (userId, profile) => {
 const readVendorProfileFromStorage = async (userId) => {
   if (!userId) return null;
   try {
-    const raw = await AsyncStorage.getItem(getVendorStorageKey(userId));
+    const raw = await storage.getItem(getVendorStorageKey(userId));
     return raw ? JSON.parse(raw) : null;
   } catch (error) {
     console.error('Failed to read vendor profile from storage:', error);

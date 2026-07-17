@@ -10,7 +10,7 @@ import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
 import { useProducts } from '../../context/ProductContext'; 
 import { MOCK_VENDORS, MOCK_PRODUCTS } from '../mockData';
-import { CUSTOMER_HOME_CATEGORIES } from '../utils/vendorCategories';
+import { CUSTOMER_HOME_CATEGORIES } from '../_utils/vendorCategories';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.45;

@@ -17,8 +17,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { COLORS } from '../styles/globalStyles';
-import { getRedirectRouteForRole } from './utils/roleRouting';
-import { CUSTOMER_HOME_CATEGORIES } from './utils/vendorCategories';
+import { getRedirectRouteForRole } from './_utils/roleRouting';
+import { CUSTOMER_HOME_CATEGORIES } from './_utils/vendorCategories';
 
 const DELICACY_TYPES = [...CUSTOMER_HOME_CATEGORIES];
 

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { getRedirectRouteForRole } from './utils/roleRouting';
+import { getRedirectRouteForRole } from './_utils/roleRouting';
 
 export default function LoginScreen() {
   const router = useRouter();
