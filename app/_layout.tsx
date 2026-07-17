@@ -29,8 +29,14 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="login" />
                 <Stack.Screen name="register" />
-                <Stack.Screen name="vendor" options={{ title: 'Vendor' }} /> 
+                <Stack.Screen name="vendor" options={{ title: 'Vendor' }} />
                 <Stack.Screen name="customer" options={{ title: 'Customer' }} />
+                <Stack.Screen name="admin/home" options={{ title: 'Admin Home' }} />
+                <Stack.Screen name="admin/vendor" options={{ title: 'Admin Vendors' }} />
+                <Stack.Screen name="admin/approvals" options={{ title: 'Admin Approvals' }} />
+                <Stack.Screen name="admin/transactions" options={{ title: 'Transaction Overview' }} />
+                <Stack.Screen name="admin/audits" options={{ title: 'Menu Audits' }} />
+                <Stack.Screen name="admin/support" options={{ title: 'Support & Moderation' }} />
               </Stack>
             </ThemeProvider>
           </CartProvider>

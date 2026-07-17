@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert, Platform, UIManager, LayoutAnimation, Linking } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SHADOWS } from '../../styles/globalStyles'; 
 import { useAuth } from '../../context/AuthContext';
 import { useVendor } from '../../context/VendorContext';
@@ -85,7 +85,7 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
           style={[styles.actionBtn, { backgroundColor: order.status === 'Preparing' ? COLORS.primary : COLORS.secondary }]}
             onPress={() => onStatusChange(order.id, order.status)}
           >
-            <Text style={styles.actionBtnText}>{order.status === 'Preparing' ? 'Ready to Meet Up' : 'Complete Order'}</Text>
+            <Text style={styles.actionBtnText}>{order.status === 'Completed' ? 'Completed' : order.status === 'Ready to Meet Up' ? 'Complete Order' : 'Ready to Meet Up'}</Text>
           <Feather name="check-circle" size={16} color="#FFF" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
       </View>
@@ -97,86 +97,176 @@ export default function VendorDashboard() {
   const router = useRouter();
   const { vendorProfile } = useVendor();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [liveApprovalStatus, setLiveApprovalStatus] = useState<string>('');
+
+  const fetchApprovalStatus = useCallback(async () => {
+    if (!vendorProfile?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('merchants')
+        .select('approval_status, status')
+        .eq('id', vendorProfile.id)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Vendor approval status fetch error:', error.message);
+        return;
+      }
+
+      const approvalStatus = String(data?.approval_status || '').trim().toLowerCase();
+      const statusValue = String(data?.status || '').trim().toLowerCase();
+
+      if (['approved', 'active', 'accepted', 'verified', 'complete'].includes(approvalStatus) || ['approved', 'active', 'accepted', 'verified', 'complete'].includes(statusValue)) {
+        setLiveApprovalStatus('approved');
+      } else if (['rejected', 'declined', 'denied'].includes(approvalStatus) || ['rejected', 'declined', 'denied'].includes(statusValue)) {
+        setLiveApprovalStatus('rejected');
+      } else {
+        setLiveApprovalStatus('pending');
+      }
+    } catch (error) {
+      console.warn('Vendor approval status fetch failed:', error);
+    }
+  }, [vendorProfile?.id]);
 
   useEffect(() => {
-    if (!vendorProfile?.name) return;
+    fetchApprovalStatus();
 
-    const fetchOrders = async () => {
-      try {
-        console.log('VendorDashboard: fetching orders for vendor:', vendorProfile.name, 'id:', vendorProfile?.id);
+    const channel = supabase.channel(`vendor-approval-${vendorProfile?.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'merchants', filter: `id=eq.${vendorProfile?.id}` }, () => {
+        fetchApprovalStatus();
+      })
+      .subscribe();
 
-        // 1) orders where vendor_name matches
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchApprovalStatus, vendorProfile?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchApprovalStatus();
+      return undefined;
+    }, [fetchApprovalStatus])
+  );
+
+  const approvalStatusValue = String(liveApprovalStatus || vendorProfile?.approvalStatus || vendorProfile?.approval_status || '').trim().toLowerCase();
+  const approvalLabel = approvalStatusValue === 'approved' || approvalStatusValue === 'active' || approvalStatusValue === 'accepted' || approvalStatusValue === 'verified' || approvalStatusValue === 'complete'
+    ? 'Approved'
+    : approvalStatusValue === 'rejected' || approvalStatusValue === 'declined' || approvalStatusValue === 'denied'
+      ? 'Rejected'
+      : 'Pending';
+  const approvalColor = approvalLabel === 'Approved' ? '#DCFCE7' : approvalLabel === 'Rejected' ? '#FEE2E2' : '#FEF3C7';
+  const approvalTextColor = approvalLabel === 'Approved' ? '#15803D' : approvalLabel === 'Rejected' ? '#B91C1C' : '#B45309';
+
+  const fetchOrders = useCallback(async () => {
+    if (!vendorProfile?.name && !vendorProfile?.id) return;
+
+    try {
+      const vendorName = vendorProfile?.name || '';
+      const vendorId = vendorProfile?.id;
+      const collected: any[] = [];
+
+      if (vendorId) {
+        const { data: byVendorId, error: vendorIdError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('vendor_id', vendorId)
+          .order('created_at', { ascending: false });
+
+        if (vendorIdError) {
+          console.warn('Vendor orders fetch by vendor id error:', vendorIdError.message);
+        } else if (byVendorId?.length) {
+          collected.push(...byVendorId);
+        }
+      }
+
+      if (vendorName) {
         const { data: byName, error: errName } = await supabase
           .from('orders')
           .select('*')
-          .eq('vendor_name', vendorProfile.name)
+          .eq('vendor_name', vendorName)
           .order('created_at', { ascending: false });
-        if (errName) console.warn('Vendor orders fetch by name error:', errName);
 
-        // 2) orders where items JSON contains this vendor id (text search)
-        let byItems = [];
-        if (vendorProfile?.id) {
-          try {
-            const { data: itemsData, error: errItems } = await supabase
-              .from('orders')
-              .select('*')
-              .ilike('items', `%${vendorProfile.id}%`)
-              .order('created_at', { ascending: false });
-            if (errItems) console.warn('Vendor orders fetch by items error:', errItems);
-            byItems = itemsData || [];
-          } catch (e) {
-            console.warn('Error fetching orders by items:', e);
-          }
+        if (errName) {
+          console.warn('Vendor orders fetch by name error:', errName.message);
+        } else if (byName?.length) {
+          collected.push(...byName);
         }
-
-        const combined = [...(byName || []), ...byItems];
-        // dedupe by id
-        const unique = Array.from(new Map(combined.map((o: any) => [o.id, o])).values());
-        console.log('Vendor orders fetched byName:', (byName || []).length, 'byItems:', byItems.length, 'unique:', unique.length);
-
-        // Fetch customer profiles for any orders that have user_id so we can show phone numbers
-        const userIds = Array.from(new Set(unique.map(o => o.user_id).filter(Boolean)));
-        let profiles: any[] = [];
-        if (userIds.length > 0) {
-          try {
-            const { data: pData, error: pErr } = await supabase.from('profiles').select('id, full_name, phone').in('id', userIds);
-            if (pErr) console.warn('Profiles fetch error', pErr);
-            profiles = pData || [];
-          } catch (e) {
-            console.warn('Profiles fetch exception', e);
-          }
-        }
-
-        const mapped = unique.map((o: any) => {
-          const prof = (profiles as any[]).find((p: any) => p.id === o.user_id);
-          return {
-            ...o,
-            customerName: o.customer_name || (prof?.full_name) || o.customerName || 'Guest Customer',
-            customerPhone: prof?.phone || o.customerPhone || null,
-          };
-        });
-
-        setOrders(mapped as Order[]);
-      } catch (e) {
-        console.error('Fetch orders exception:', e);
       }
-    };
 
+      const unique = Array.from(new Map(collected.map((o: any) => [o.id, o])).values());
+      const userIds = Array.from(new Set(unique.map((o: any) => o.user_id).filter(Boolean)));
+      let profiles: any[] = [];
+
+      if (userIds.length > 0) {
+        try {
+          const { data: pData, error: pErr } = await supabase.from('profiles').select('id, full_name, phone').in('id', userIds);
+          if (pErr) console.warn('Profiles fetch error', pErr.message);
+          profiles = pData || [];
+        } catch (e) {
+          console.warn('Profiles fetch exception', e);
+        }
+      }
+
+      const mapped = unique.map((o: any) => {
+        const prof = (profiles as any[]).find((p: any) => p.id === o.user_id);
+        return {
+          ...o,
+          customerName: o.customer_name || (prof?.full_name) || o.customerName || 'Guest Customer',
+          customerPhone: prof?.phone || o.customerPhone || null,
+        };
+      });
+
+      setOrders(mapped as Order[]);
+    } catch (e) {
+      console.error('Fetch orders exception:', e);
+    }
+  }, [vendorProfile?.id, vendorProfile?.name]);
+
+  useEffect(() => {
     fetchOrders();
 
     const channel = supabase.channel('realtime-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-        console.log('Realtime orders event:', payload);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         fetchOrders();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [vendorProfile?.name]);
+  }, [fetchOrders]);
 
   const handleStatusTransition = async (orderId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'Preparing' ? 'Ready' : 'Completed';
-    await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
+    const nextStatus = currentStatus === 'Preparing' || currentStatus === 'Awaiting Payment' ? 'Ready to Meet Up' : 'Completed';
+
+    let updateResult: any = null;
+    if (vendorProfile?.id) {
+      updateResult = await supabase.from('orders').update({ status: nextStatus }).eq('id', String(orderId)).eq('vendor_id', vendorProfile.id).select();
+    }
+
+    if (!updateResult || updateResult.error || !updateResult.data?.length) {
+      if (vendorProfile?.name) {
+        updateResult = await supabase.from('orders').update({ status: nextStatus }).eq('id', String(orderId)).eq('vendor_name', vendorProfile.name).select();
+      }
+    }
+
+    if (updateResult?.error) {
+      console.error('Failed to update order status:', updateResult.error);
+      Alert.alert('Update failed', updateResult.error.message || 'Could not update the order status. Please try again.');
+      return;
+    }
+
+    if (!updateResult?.data?.length) {
+      const fallbackResult = await supabase.from('orders').update({ status: nextStatus }).eq('id', String(orderId)).select();
+      if (fallbackResult.error) {
+        console.error('Failed to update order status:', fallbackResult.error);
+        Alert.alert('Update failed', fallbackResult.error.message || 'Could not update the order status. Please try again.');
+        return;
+      }
+    }
+
+    await fetchOrders();
+    Alert.alert('Status updated', 'The customer can now see the new order status.');
   };
 
   const activeOrders = orders.filter(o => o.status !== 'Completed');
@@ -191,6 +281,9 @@ export default function VendorDashboard() {
           <View>
             <Text style={styles.welcomeText}>LIVE DASHBOARD</Text>
             <Text style={styles.storeName}>{vendorProfile?.name || 'Your Kitchen'}</Text>
+            <View style={[styles.approvalBadge, { backgroundColor: approvalColor }]}>
+              <Text style={[styles.approvalBadgeText, { color: approvalTextColor }]}>{approvalLabel}</Text>
+            </View>
           </View>
           <TouchableOpacity onPress={() => Alert.alert("Logout", "Exit dashboard?", [{text: "Logout", style: "destructive", onPress: () => router.replace('/login')}])}>
             <Feather name="log-out" size={20} color="#FFF" />
@@ -211,9 +304,10 @@ export default function VendorDashboard() {
 
         <Text style={styles.sectionTitle}>Management Tools</Text>
         <View style={styles.toolGrid}>
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/inventory')}><View style={styles.toolIcon}><MaterialCommunityIcons name="layers-outline" size={24} color="#5C5CFF" /></View><Text style={styles.toolText}>Inventory</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/scanner')}><View style={styles.toolIcon}><MaterialCommunityIcons name="qrcode-scan" size={24} color={COLORS.primary} /></View><Text style={styles.toolText}>Scanner</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/reports')}><View style={styles.toolIcon}><Feather name="bar-chart-2" size={24} color="#22C55E" /></View><Text style={styles.toolText}>Reports</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/inventory')}><View style={styles.toolIcon}><MaterialCommunityIcons name="layers-outline" size={20} color="#5C5CFF" /></View><Text style={styles.toolText}>Inventory</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/profile-edit')}><View style={styles.toolIcon}><MaterialCommunityIcons name="storefront-outline" size={20} color="#F59E0B" /></View><Text style={styles.toolText}>Shop Profile</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/scanner')}><View style={styles.toolIcon}><MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.primary} /></View><Text style={styles.toolText}>Scanner</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} onPress={() => router.push('/vendor/history')}><View style={styles.toolIcon}><Feather name="clock" size={20} color="#7C3AED" /></View><Text style={styles.toolText}>Order History</Text></TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>Live Queue</Text>
@@ -237,6 +331,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   welcomeText: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
   storeName: { color: '#FFF', fontSize: 28, fontWeight: '800', marginTop: 4 },
+  approvalBadge: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  approvalBadgeText: { fontSize: 12, fontWeight: '700' },
   content: { padding: 20 },
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
   mainStat: { flex: 2, backgroundColor: '#FFF', padding: 20, borderRadius: 20, ...SHADOWS.small, borderWidth: 1, borderColor: '#F1F5F9' },
@@ -247,10 +343,10 @@ const styles = StyleSheet.create({
   smallStatNum: { fontSize: 18, fontWeight: '900', color: '#FFF' },
   smallStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: '700', marginTop: 2 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 15, marginTop: 10 },
-  toolGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, paddingHorizontal: 5 },
-  toolItem: { alignItems: 'center', width: '30%', backgroundColor: '#FFF', paddingVertical: 15, borderRadius: 20, ...SHADOWS.small, borderWidth: 1, borderColor: '#F1F5F9' },
-  toolIcon: { width: 65, height: 65, borderRadius: 22, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  toolText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 30, paddingHorizontal: 2 },
+  toolItem: { alignItems: 'center', width: '48%', backgroundColor: '#FFF', paddingVertical: 12, paddingHorizontal: 10, borderRadius: 18, ...SHADOWS.small, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 12 },
+  toolIcon: { width: 54, height: 54, borderRadius: 18, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  toolText: { fontSize: 12, fontWeight: '700', color: '#334155' },
   orderCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#E2E8F0' },
   orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   orderID: { fontWeight: '900', color: '#1E293B' },

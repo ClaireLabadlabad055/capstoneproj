@@ -57,10 +57,11 @@ export default function CustomerLayout() {
         }}
       />
 
-      <Tabs.Screen name="checkout" options={{ href: null }} />
-      <Tabs.Screen name="OrderSuccess" options={{ href: null }} />
-      <Tabs.Screen name="VendorDetails" options={{ href: null }} />
-      <Tabs.Screen name="orders" options={{ href: null }} />
+      <Tabs.Screen name="checkout" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="OrderSuccess" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="VendorDetails" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="orders" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="history" options={{ href: null, tabBarStyle: { display: 'none' } }} />
     </Tabs>
     /* ❌ REMOVE the </CartProvider> closing tag */
   );

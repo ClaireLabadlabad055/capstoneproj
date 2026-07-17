@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -14,90 +14,145 @@ import {
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../styles/globalStyles';
+import { supabase } from '../../lib/supabaseClient';
 
-// Mock Data - In a real app, this comes from Firebase/Database
-const INITIAL_VENDORS = [
-  { id: '1', name: 'Takoyaki Corner', category: 'Snacks', status: 'Active', orders: 154, joined: 'Jan 2026' },
-  { id: '2', name: 'Siomai House', category: 'Fast Food', status: 'Pending', orders: 0, joined: 'Mar 2026' },
-  { id: '3', name: 'Fruit Shake Hub', category: 'Beverages', status: 'Active', orders: 89, joined: 'Feb 2026' },
-  { id: '4', name: 'Burger Station', category: 'Fast Food', status: 'Suspended', orders: 210, joined: 'Dec 2025' },
-];
+const getVendorStatus = (item: any) => {
+  const approvalStatus = String(item?.approval_status || item?.status || '').trim().toLowerCase();
+  const statusValue = String(item?.status || '').trim().toLowerCase();
+
+  if (['approved', 'active', 'accepted', 'verified', 'complete'].includes(approvalStatus) || ['approved', 'active', 'accepted', 'verified', 'complete'].includes(statusValue)) {
+    return 'Active';
+  }
+
+  if (['rejected', 'declined', 'denied'].includes(approvalStatus) || ['rejected', 'declined', 'denied'].includes(statusValue)) {
+    return 'Rejected';
+  }
+
+  return 'Pending';
+};
 
 export default function ManageVendors() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [vendors, setVendors] = useState(INITIAL_VENDORS);
+  const [vendors, setVendors] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const { data: merchantData, error: merchantError } = await supabase
+          .from('merchants')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (merchantError) throw merchantError;
+
+        const mergedVendors = (merchantData || []).map((item: any) => ({
+          ...item,
+          approval_status: item.approval_status || '',
+          status: item.status || item.approval_status || '',
+        }));
+
+        setVendors(mergedVendors);
+      } catch (error) {
+        console.error('Failed to fetch merchants:', error);
+        Alert.alert('Error', 'Unable to load vendor list.');
+      }
+    };
+    fetchVendors();
+  }, []);
 
   const filteredVendors = vendors.filter(v => 
-    v.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (v.business_name || v.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleToggleStatus = (id: string, currentStatus: string) => {
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
-    
+    const normalizedStatus = nextStatus === 'Active' ? 'Active' : 'Rejected';
+
     Alert.alert(
       "Update Status",
       `Are you sure you want to set this vendor to ${nextStatus}?`,
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Confirm", 
-          onPress: () => {
-            setVendors(prev => prev.map(v => 
-              v.id === id ? { ...v, status: nextStatus } : v
-            ));
-          } 
+        {
+          text: "Confirm",
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('merchants')
+                .update({ status: normalizedStatus, approval_status: normalizedStatus === 'Active' ? 'approved' : 'rejected' })
+                .eq('id', id);
+
+              if (error) throw error;
+
+              setVendors(prev => prev.map(v =>
+                v.id === id ? { ...v, status: normalizedStatus, approval_status: normalizedStatus === 'Active' ? 'approved' : 'rejected' } : v
+              ));
+
+              Alert.alert('Success', 'Vendor status updated.');
+            } catch (error: any) {
+              console.error('Failed to update vendor status:', error);
+              Alert.alert('Update Failed', error.message || 'Unable to update vendor status.');
+            }
+          }
         }
       ]
     );
   };
 
-  const renderVendorCard = ({ item }: { item: typeof INITIAL_VENDORS[0] }) => (
-    <View style={[styles.vendorCard, SHADOWS?.small]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.infoGroup}>
-          <Text style={styles.vendorName}>{item.name}</Text>
-          <Text style={styles.categoryTag}>{item.category} • Joined {item.joined}</Text>
-        </View>
-        <View style={[styles.statusBadge, { 
-          backgroundColor: item.status === 'Active' ? '#DCFCE7' : item.status === 'Pending' ? '#FEF3C7' : '#FEE2E2' 
-        }]}>
-          <Text style={[styles.statusText, { 
-            color: item.status === 'Active' ? '#15803D' : item.status === 'Pending' ? '#B45309' : '#B91C1C' 
-          }]}>{item.status}</Text>
-        </View>
-      </View>
+const renderVendorCard = ({ item }: { item: any }) => {
+    const name = item.business_name || item.full_name || 'Unnamed Vendor';
+    const status = getVendorStatus(item);
+    const category = item.delicacy_type || item.category || 'No category';
+    const joined = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown';
 
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Lifetime Orders</Text>
-          <Text style={styles.statValue}>{item.orders}</Text>
+    return (
+      <View style={[styles.vendorCard, SHADOWS?.small]}>
+        <View style={styles.cardHeader}>
+          <View style={styles.infoGroup}>
+            <Text style={styles.vendorName}>{name}</Text>
+            <Text style={styles.categoryTag}>{category} • Joined {joined}</Text>
+          </View>
+          <View style={[styles.statusBadge, { 
+            backgroundColor: status === 'Active' ? '#DCFCE7' : status === 'Pending' ? '#FEF3C7' : '#FEE2E2' 
+          }]}> 
+            <Text style={[styles.statusText, { 
+              color: status === 'Active' ? '#15803D' : status === 'Pending' ? '#B45309' : '#B91C1C' 
+            }]}>{status}</Text>
+          </View>
         </View>
-        <View style={styles.actionGroup}>
-         <TouchableOpacity 
-            style={[styles.iconBtn, { backgroundColor: '#F1F5F9' }]}
-            onPress={() => router.push({
-            pathname: '/admin/vendor-details',
-            params: { id: item.id, name: item.name } // Pass the vendor info
-    })}
->
-  <Feather name="eye" size={18} color="#64748B" />
-</TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.iconBtn, { backgroundColor: item.status === 'Active' ? '#FFF1F1' : '#F0FDF4' }]}
-            onPress={() => handleToggleStatus(item.id, item.status)}
-          >
-            <Feather 
-              name={item.status === 'Active' ? "slash" : "check-circle"} 
-              size={18} 
-              color={item.status === 'Active' ? "#EF4444" : "#22C55E"} 
-            />
-          </TouchableOpacity>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Pickup</Text>
+            <Text style={styles.statValue}>{item.pickup_landmark || 'No pickup info'}</Text>
+          </View>
+          <View style={styles.actionGroup}>
+           <TouchableOpacity 
+              style={[styles.iconBtn, { backgroundColor: '#F1F5F9' }]}
+              onPress={() => router.push({
+                pathname: '/admin/vendor-details',
+                params: { id: item.id, name }
+              })}
+            >
+              <Feather name="eye" size={18} color="#64748B" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.iconBtn, { backgroundColor: status === 'Active' ? '#FFF1F1' : '#F0FDF4' }]}
+              onPress={() => handleToggleStatus(item.id, status)}
+            >
+              <Feather 
+                name={status === 'Active' ? "slash" : "check-circle"} 
+                size={18} 
+                color={status === 'Active' ? "#EF4444" : "#22C55E"} 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>

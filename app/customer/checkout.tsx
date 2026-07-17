@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, StatusBar } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, StatusBar, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
@@ -31,6 +31,9 @@ export default function Checkout() {
 
   const vendorsInCart = Array.from(new Set((cartItems || []).map((item: any) => String(item.vendorName || 'Unknown'))));
   const subtotal = (cartItems || []).reduce((sum: number, item: any) => sum + (Number(item.price) * (item.qty || 1)), 0);
+  const SERVICE_FEE_RATE = 0.05; // 5% service fee
+  const serviceFee = Number((subtotal * SERVICE_FEE_RATE).toFixed(2));
+  const total = Number((subtotal + serviceFee).toFixed(2));
 
   const handlePlaceOrder = async () => {
     if (!cartItems || cartItems.length === 0) {
@@ -39,13 +42,13 @@ export default function Checkout() {
     }
 
     try {
-      const result = await placeOrder();
+      const result = await placeOrder(selectedPickup, paymentMethod);
       if (result?.checkoutId) {
         if (result.success === false) {
           const errMsg = result.error?.message || String(result.error || 'Unknown');
           Alert.alert('Order Not Persisted', `Order created locally but failed to save to DB: ${errMsg}`);
         }
-        router.replace({ pathname: '/customer/OrderSuccess', params: { checkoutId: result.checkoutId } });
+        router.replace({ pathname: '/customer/OrderSuccess', params: { checkoutId: result.checkoutId, paymentMethod } });
       } else {
         Alert.alert('Order Error', 'Could not complete checkout.');
       }
@@ -116,16 +119,24 @@ export default function Checkout() {
               ))}
             </View>
           ))}
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subtotal</Text>
+            <Text style={styles.summaryValue}>₱{subtotal.toFixed(2)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Service Fee</Text>
+            <Text style={styles.summaryValue}>₱{serviceFee.toFixed(2)}</Text>
+          </View>
           <View style={[styles.summaryRow, styles.totalDivider]}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>₱{subtotal.toFixed(2)}</Text>
+            <Text style={styles.totalValue}>₱{total.toFixed(2)}</Text>
           </View>
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
         <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder}>
-          <Text style={styles.placeOrderText}>Confirm Order • ₱{subtotal.toFixed(2)}</Text>
+          <Text style={styles.placeOrderText}>Confirm Order • ₱{total.toFixed(2)}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -134,9 +145,9 @@ export default function Checkout() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 50, paddingBottom: 20, alignItems: 'center', backgroundColor: '#FFF' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? 50 : 20, paddingBottom: 20, alignItems: 'center', backgroundColor: '#FFF' },
   headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.secondary },
-  scrollContent: { padding: 20, paddingBottom: 160 },
+  scrollContent: { padding: 20, paddingBottom: Platform.OS === 'android' ? 220 : 260 },
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.secondary, marginBottom: 10 },
   dropdown: { backgroundColor: '#FFF', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#DDD', flexDirection: 'row', justifyContent: 'space-between' },
@@ -158,7 +169,7 @@ const styles = StyleSheet.create({
   totalDivider: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 10 },
   totalLabel: { fontSize: 18, fontWeight: '800', color: COLORS.secondary },
   totalValue: { fontSize: 18, fontWeight: '800', color: COLORS.primary },
-  footer: { padding: 20, paddingBottom: 80, backgroundColor: '#FFF', position: 'absolute', bottom: 0, left: 0, right: 0 },
+  footer: { padding: 20, paddingBottom: Platform.OS === 'android' ? 32 : 40, backgroundColor: '#FFF', position: 'absolute', bottom: 0, left: 0, right: 0 },
   placeOrderBtn: { backgroundColor: COLORS.secondary, padding: 20, borderRadius: 20, alignItems: 'center' },
   placeOrderText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
 });

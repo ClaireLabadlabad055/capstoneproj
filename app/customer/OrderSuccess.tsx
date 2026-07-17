@@ -9,11 +9,18 @@ import { useCart } from '../../context/CartContext';
 
 export default function OrderSuccess() {
   const router = useRouter();
-  const { checkoutId } = useLocalSearchParams(); 
+  const { checkoutId, paymentMethod: routePaymentMethod } = useLocalSearchParams(); 
   const [order, setOrder] = useState<any>(null);
   const [pickupName, setPickupName] = useState<string>('Loading...');
+  const [paymentMethod, setPaymentMethod] = useState<string>(String(routePaymentMethod || 'COD'));
   const [loading, setLoading] = useState(true);
   const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (routePaymentMethod) {
+      setPaymentMethod(String(routePaymentMethod));
+    }
+  }, [routePaymentMethod]);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -32,7 +39,7 @@ export default function OrderSuccess() {
           setOrder(local);
         } else {
           // As a last resort, show a minimal order placeholder so QR still appears
-          setOrder({ id: checkoutId, total: 0, pickup_point_id: null });
+          setOrder({ id: checkoutId, total: 0, pickup_point_id: null, paymentMethod: paymentMethod });
         }
       }
 
@@ -41,7 +48,7 @@ export default function OrderSuccess() {
       setLoading(false);
     };
     fetchOrder();
-  }, [checkoutId]);
+  }, [checkoutId, routePaymentMethod]);
 
   useEffect(() => {
     // run entrance animation when order is available
@@ -119,11 +126,29 @@ export default function OrderSuccess() {
                 <Text style={styles.label}>Pick-up Point</Text>
                 <Text style={styles.value}>{pickupName}</Text>
               </View>
+              {paymentMethod === 'GCash' && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Payment</Text>
+                  <Text style={styles.value}>GCash / E-Wallet</Text>
+                </View>
+              )}
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Total Amount</Text>
                 <Text style={styles.value}>₱{Number(order.total || 0).toFixed(2)}</Text>
               </View>
             </View>
+            {paymentMethod === 'GCash' && (
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeTitle}>Next Step</Text>
+                <Text style={styles.noticeText}>Send your GCash payment screenshot to the vendor through the chat, then wait for acknowledgement before pickup.</Text>
+              </View>
+            )}
+            {paymentMethod === 'GCash' && order?.vendor_id && (
+              <TouchableOpacity style={styles.messageBtn} onPress={() => router.push({ pathname: '/customer/VendorDetails', params: { id: String(order.vendor_id) } })}>
+                <Feather name="message-circle" size={16} color="#FFF" />
+                <Text style={styles.messageBtnText}>Message Vendor</Text>
+              </TouchableOpacity>
+            )}
           </Animated.View>
         ) : (
           <Text style={styles.emptyText}>Order details not found.</Text>
@@ -154,6 +179,11 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   label: { fontSize: 14, color: '#999' },
   value: { fontSize: 14, fontWeight: '700', color: COLORS.secondary },
+  noticeBox: { width: '100%', backgroundColor: '#FFF4E5', borderRadius: 18, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#F5D6A0' },
+  noticeTitle: { fontSize: 15, fontWeight: '700', color: '#B45309', marginBottom: 8 },
+  noticeText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
+  messageBtn: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 28 },
+  messageBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   
   homeBtn: { marginTop: 30, paddingVertical: 15, paddingHorizontal: 40, borderRadius: 50, backgroundColor: COLORS.secondary },
   homeBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },

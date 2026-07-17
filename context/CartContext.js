@@ -15,7 +15,7 @@ export const CartProvider = ({ children }) => {
     address: "Poblacion, Toledo City, Cebu",
   });
 
-  const { userData } = useAuth();
+  const { user, userData } = useAuth();
 
   useEffect(() => {
     if (userData) {
@@ -81,14 +81,17 @@ export const CartProvider = ({ children }) => {
   };
 
   // --- Place Order Logic ---
-  const placeOrder = async (pickupPointId) => {
+  const placeOrder = async (pickupPointId, paymentMethod = 'COD') => {
     if (cartItems.length === 0) return null;
 
     const checkoutId = `CH-${Date.now().toString().slice(-6)}`;
     const now = new Date();
 
-    // Compute total for the whole checkout
-    const total = cartItems.reduce((sum, i) => sum + (Number(i.price || 0) * (i.qty || 1)), 0);
+    // Compute amounts for the whole checkout
+    const subtotal = cartItems.reduce((sum, i) => sum + (Number(i.price || 0) * (i.qty || 1)), 0);
+    const SERVICE_FEE_RATE = 0.05; // 5% service fee
+    const serviceFee = Number((subtotal * SERVICE_FEE_RATE).toFixed(2));
+    const total = Number((subtotal + serviceFee).toFixed(2));
 
     // Parent order record that OrderSuccess expects to find by id
     const vendorNames = Array.from(new Set((cartItems || []).map((item) => String(item.vendorName || 'Unknown'))));
@@ -116,21 +119,29 @@ export const CartProvider = ({ children }) => {
       }
     }
 
+    const firstItem = cartItems?.[0] || {};
+    if (!resolvedVendorName || resolvedVendorName === 'Vendor' || resolvedVendorName === 'Independent Vendor') {
+      resolvedVendorName = (firstItem.vendorName && firstItem.vendorName !== 'Independent Vendor')
+        ? firstItem.vendorName
+        : (firstItem.vendor_name || firstItem.vendorName || 'Unknown Vendor');
+    }
+
     const orderPayload = {
       id: checkoutId,
       user_id: userData?.id || null,
       items: cartItems,
-      total: total,
-      // Store seller-provided pickup information in pickup_point_id (text column)
+      subtotal,
+      serviceFee,
+      total,
       pickup_point_id: sellerPickup || pickupPointId || null,
-      status: 'Preparing',
+      status: paymentMethod === 'GCash' ? 'Awaiting Payment' : 'Preparing',
+      paymentMethod,
       customer_name: userProfile.name,
       customerName: userProfile.name,
-        // store items array under order_details for UI
-        order_details: orderPayload.items,
-        // include vendor_id when DB has the column (will be null if not present yet)
-        vendor_id: vendorId || orderPayload.vendor_id || null,
-      vendor_id: cartItems?.[0]?.vendorId || null,
+      vendor_name: resolvedVendorName,
+      vendorName: resolvedVendorName,
+      vendor_id: vendorId || firstItem.vendorId || null,
+      order_details: cartItems,
       created_at: now.toISOString(),
     };
 
@@ -140,16 +151,15 @@ export const CartProvider = ({ children }) => {
 
       const insertPayload = {
         id: orderPayload.id,
-        user_id: orderPayload.user_id,
+        user_id: user?.id || orderPayload.user_id,
         items: orderPayload.items,
         total: orderPayload.total,
         pickup_point_id: orderPayload.pickup_point_id,
         status: orderPayload.status,
         customer_name: orderPayload.customer_name,
-        // vendor_name is present in DB and required; vendor_id column does not exist in schema, omit it
         vendor_name: orderPayload.vendor_name || orderPayload.vendorName || 'Unknown Vendor',
+        vendor_id: orderPayload.vendor_id || null,
         item_count: itemCount,
-        // order_details expected by some UI: store items array under order_details as well
         order_details: orderPayload.items,
         created_at: orderPayload.created_at,
       };

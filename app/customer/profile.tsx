@@ -81,54 +81,47 @@ export default function Profile() {
   };
 
   const uploadAvatar = async (base64: string) => {
-  if (!user) return;
-  setUploading(true);
-  try {
-    const filePath = `${user.id}/${Date.now()}.jpg`;
-    const fileBuffer = decode(base64);
+    if (!user) return;
+    setUploading(true);
+    try {
+      const filePath = `${user.id}/${Date.now()}.jpg`;
+      const fileBuffer = decode(base64);
 
-    const { error: uploadError } = await supabase.storage
-      .from('avatar')
-      .upload(filePath, fileBuffer, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('avatar')
+        .upload(filePath, fileBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
 
-    if (uploadError) throw uploadError;
+      if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage.from('avatar').getPublicUrl(filePath);
-    
-    // 1. Update Database
-const { error: customerUpdateError } = await supabase
-      .from('customers')
-      .update({ avatar_url: data.publicUrl })
-      .eq('id', user.id);
+      const { data } = supabase.storage.from('avatar').getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error('Unable to generate avatar URL.');
 
-    const { error: profileUpdateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: data.publicUrl })
-      .eq('id', user.id);
+      const [{ error: customerUpdateError }, { error: profileUpdateError }] = await Promise.all([
+        supabase.from('customers').update({ avatar_url: data.publicUrl }).eq('id', user.id),
+        supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id),
+      ]);
 
-    if (customerUpdateError && profileUpdateError) throw customerUpdateError || profileUpdateError;
-    
-    // 2. SYNC: Update Local Context and Refresh
-    // This calls the helper we added to AuthContext to update the UI instantly
-    if (typeof updateLocalUserData === 'function') {
-      updateLocalUserData({ avatar_url: data.publicUrl });
+      if (customerUpdateError || profileUpdateError) {
+        const errorMessage = customerUpdateError?.message || profileUpdateError?.message || 'Failed to update avatar in one or more tables.';
+        throw new Error(errorMessage);
+      }
+
+      if (typeof updateLocalUserData === 'function') {
+        updateLocalUserData({ avatar_url: data.publicUrl });
+      }
+      if (user?.id) await refreshUserData(user.id);
+      setProfileImage(`${data.publicUrl}?t=${new Date().getTime()}`);
+      Alert.alert('Success', 'Photo updated!');
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Upload failed. Ensure bucket is public.');
+    } finally {
+      setUploading(false);
     }
-    
-    // This triggers a full refresh from the DB to be safe
-    if (user?.id) await refreshUserData(user.id);
-    
-    setProfileImage(`${data.publicUrl}?t=${new Date().getTime()}`);
-    Alert.alert('Success', 'Photo updated!');
-  } catch (error) {
-    console.error(error);
-    Alert.alert('Error', 'Upload failed. Ensure bucket is public.');
-  } finally {
-    setUploading(false);
-  }
-};
+  };
 
   if (authLoading) {
     return <View style={styles.center}><ActivityIndicator size="large" /></View>;
@@ -140,7 +133,7 @@ const { error: customerUpdateError } = await supabase
       <View style={styles.whiteHeader}>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitleText}>
-            {view === 'menu' ? "My Profile" : view === 'address' ? "Shipping Address" : "Account Settings"}
+            {view === 'menu' ? "My Profile" : view === 'address' ? "Personal Info" : "Account Settings"}
           </Text>
         </View>
         {view !== 'menu' && (
@@ -172,8 +165,16 @@ const { error: customerUpdateError } = await supabase
               <TouchableOpacity style={styles.menuItem} onPress={() => setView('address')}>
                 <View style={[styles.iconBg, {backgroundColor: '#FDF5F2'}]}><Feather name="map-pin" size={20} color="#8D493A" /></View>
                 <View style={styles.menuTextContent}>
-                  <Text style={styles.menuLabel}>Address</Text>
+                  <Text style={styles.menuLabel}>Personal Info</Text>
                   <Text style={styles.menuSubLabel}>{tempAddress.details}</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color="#CCC" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/customer/history')}>
+                <View style={[styles.iconBg, {backgroundColor: '#EFF6FF'}]}><Feather name="clock" size={20} color="#3B82F6" /></View>
+                <View style={styles.menuTextContent}>
+                  <Text style={styles.menuLabel}>History</Text>
+                  <Text style={styles.menuSubLabel}>View past orders and status</Text>
                 </View>
                 <Feather name="chevron-right" size={20} color="#CCC" />
               </TouchableOpacity>
@@ -208,7 +209,7 @@ const { error: customerUpdateError } = await supabase
             <TextInput style={styles.input} value={tempAddress.name} onChangeText={(t) => setTempAddress({...tempAddress, name: t})} />
             <Text style={styles.inputLabel}>Phone Number</Text>
             <TextInput style={styles.input} value={tempAddress.phone} onChangeText={(t) => setTempAddress({...tempAddress, phone: t})} keyboardType="phone-pad" />
-            <Text style={styles.inputLabel}>Shipping Address</Text>
+            <Text style={styles.inputLabel}>Address</Text>
             <TextInput style={styles.input} value={tempAddress.details} onChangeText={(t) => setTempAddress({...tempAddress, details: t})} />
             <TouchableOpacity
               style={styles.saveBtn}
@@ -221,24 +222,15 @@ const { error: customerUpdateError } = await supabase
                     address: tempAddress.details,
                   };
 
-                  let updateError = null;
+                  const [{ error: customerUpdateError }, { error: profileUpdateError }] = await Promise.all([
+                    supabase.from('customers').update(updates).eq('id', user.id),
+                    supabase.from('profiles').update(updates).eq('id', user.id),
+                  ]);
 
-                  const { error: customerUpdateError } = await supabase
-                    .from('customers')
-                    .update(updates)
-                    .eq('id', user.id);
-
-                  updateError = customerUpdateError;
-
-                  if (updateError) {
-                    const { error: profileUpdateError } = await supabase
-                      .from('profiles')
-                      .update(updates)
-                      .eq('id', user.id);
-                    updateError = profileUpdateError;
+                  if (customerUpdateError || profileUpdateError) {
+                    const errorMessage = customerUpdateError?.message || profileUpdateError?.message || 'Failed to update profile data in one or more tables.';
+                    throw new Error(errorMessage);
                   }
-
-                  if (updateError) throw updateError;
 
                   if (typeof updateLocalUserData === 'function') {
                     updateLocalUserData(updates);

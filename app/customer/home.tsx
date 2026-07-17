@@ -10,11 +10,12 @@ import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
 import { useProducts } from '../../context/ProductContext'; 
 import { MOCK_VENDORS, MOCK_PRODUCTS } from '../mockData';
+import { CUSTOMER_HOME_CATEGORIES } from '../utils/vendorCategories';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.45;
 
-const CATEGORIES = ['All Vendors', 'Snacks', 'Sweets', 'Beverages', 'Meals'];
+const CATEGORIES = ['All Vendors', ...CUSTOMER_HOME_CATEGORIES];
 const CAT_ICONS: { [key: string]: string } = {
   'All Vendors': 'grid-outline',
   'Snacks': 'fast-food-outline',
@@ -107,13 +108,6 @@ const VendorCard = ({ item, onOpen }: any) => {
           <Text style={styles.vendorPriceRange}>₱₱</Text>
         </View>
         <Text style={styles.vendorCategorySubtitle}>{item.category}</Text>
-        <Text style={styles.vendorDescription} numberOfLines={2}>{item.description || 'Freshly prepared delicacies for your customers.'}</Text>
-        <View style={styles.vendorMetaRow}> 
-          <View style={styles.metaItem}>
-            <Feather name="map-pin" size={14} color="#777" />
-            <Text style={styles.metaText}>{item.location || 'Toledo City, Cebu'}</Text>
-          </View>
-        </View>
       </View>
     </TouchableOpacity>
   );
@@ -426,7 +420,7 @@ export default function UserDashboard() {
           </>
         )}
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Nearby Vendors</Text></View>
+        <View style={[styles.sectionHeader, styles.sectionHeaderCompact]}><Text style={styles.sectionTitle}>Nearby Vendors</Text></View>
         {(filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).length > 0 ? (
           (filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).map((vendor: any) => (
             <VendorCard key={vendor.id} item={vendor} onOpen={() => router.push({
@@ -480,7 +474,8 @@ const styles = StyleSheet.create({
   mainScroll: { paddingHorizontal: 20, paddingTop: 10, flexGrow: 1 },
   searchBar: { flexDirection: 'row', backgroundColor: '#F8F9FA', borderRadius: 15, paddingHorizontal: 15, height: 50, alignItems: 'center', marginVertical: 15 },
   searchInput: { flex: 1, marginLeft: 10 },
-  sectionHeader: { marginTop: 20, marginBottom: 10 },
+  sectionHeader: { marginTop: 10, marginBottom: 6 },
+  sectionHeaderCompact: { marginTop: 8, marginBottom: 6 },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
   categoriesList: { marginBottom: 10 },
   categoryCard: { alignItems: 'center', marginRight: 15 },
@@ -501,15 +496,16 @@ const styles = StyleSheet.create({
   vendorLargeImage: { width: '100%', height: 140 },
   ratingBadgeFloating: { position: 'absolute', top: 10, right: 10, backgroundColor: '#FFF', padding: 5, borderRadius: 10, flexDirection: 'row', alignItems: 'center' },
   ratingBadgeText: { fontSize: 12, fontWeight: '800', marginLeft: 3 },
-  vendorInfoContent: { padding: 15 },
+  vendorInfoContent: { padding: 12 },
   vendorTitleRow: { flexDirection: 'row', justifyContent: 'space-between' },
   vendorNameLarge: { fontSize: 18, fontWeight: '800' },
   vendorPriceRange: { color: '#AAA' },
-  vendorCategorySubtitle: { color: COLORS.primary, fontSize: 12, fontWeight: '600', marginTop: 6 },
-  vendorDescription: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 16 },
-  vendorMetaRow: { flexDirection: 'row', gap: 15, marginTop: 10 },
+  vendorCategorySubtitle: { color: COLORS.primary, fontSize: 12, fontWeight: '600', marginTop: 4 },
+  vendorDescription: { fontSize: 12, color: '#666', marginTop: 6, lineHeight: 16 },
+  vendorMetaRow: { flexDirection: 'column', gap: 8, marginTop: 8 },
+  metaItemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 12, color: '#666' },
+  metaText: { fontSize: 12, color: '#666', flexShrink: 1 },
   emptyContainer: { padding: 20, alignItems: 'center' },
   emptyText: { color: '#AAA' }
   ,

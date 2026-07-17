@@ -140,9 +140,10 @@ export default function VendorDetails() {
   const fetchMerchantProfile = useCallback(async () => {
     if (!params.id) return;
 
-    const [merchantResponse, customerResponse] = await Promise.all([
+    const [merchantResponse, customerResponse, profileResponse] = await Promise.all([
       supabase.from('merchants').select('*').eq('id', params.id).maybeSingle(),
       supabase.from('customers').select('*').eq('id', params.id).maybeSingle(),
+      supabase.from('profiles').select('*').eq('id', params.id).maybeSingle(),
     ]);
 
     if (!merchantResponse.error && merchantResponse.data) {
@@ -159,8 +160,12 @@ export default function VendorDetails() {
       setMerchantProfile(mp);
     }
 
-    if (!customerResponse.error && customerResponse.data) {
-      setMerchantContactProfile(customerResponse.data);
+    if (!customerResponse.error || !profileResponse.error) {
+      const mergedContactProfile = {
+        ...(customerResponse.data || {}),
+        ...(profileResponse.data || {}),
+      };
+      setMerchantContactProfile(mergedContactProfile);
     }
   }, [params.id]);
 
@@ -226,12 +231,20 @@ export default function VendorDetails() {
 
   const allProducts = dbProducts;
 
-  const displayName = merchantProfile?.business_name || merchantProfile?.full_name || (params.name as string) || 'Vendor';
-  const displayDesc = vendorProfile?.description || (params.description as string) || merchantProfile?.delicacy_type || 'Fresh local delicacies.';
-  const displayLoc = merchantProfile?.barangay ? `${merchantProfile.barangay}, Toledo City` : ((params.location as string) || 'Toledo City, Cebu');
-  const phoneNumber = merchantContactProfile?.phone || merchantProfile?.phone || (params.mobile as string) || 'Not available';
-  const meetupPoint = merchantProfile?.pickup_landmark || (params.meetupPoint as string) || 'Meetup point not specified.';
-  const meetupDetails = merchantProfile?.pickup_details || (params.meetupDetails as string) || 'Meetup details are not available.';
+  const displayName = merchantProfile?.business_name || merchantProfile?.full_name || (params.name as string) || vendorProfile?.name || 'Vendor';
+  const displayDesc = merchantProfile?.delicacy_type || merchantProfile?.description || (params.description as string) || vendorProfile?.description || 'Fresh local delicacies.';
+  const displayLoc = merchantProfile?.barangay ? `${merchantProfile.barangay}, Toledo City` : ((params.location as string) || vendorProfile?.location || 'Toledo City, Cebu');
+  const phoneNumber = merchantContactProfile?.phone || merchantProfile?.phone || (params.mobile as string) || vendorProfile?.mobile || 'Not available';
+  const meetupPoint = merchantProfile?.pickup_landmark || (params.meetupPoint as string) || vendorProfile?.meetupPoint || 'Meetup point not specified.';
+  const meetupDetails = merchantProfile?.pickup_details || (params.meetupDetails as string) || vendorProfile?.meetupDetails || 'Meetup details are not available.';
+  const profileSummary = useMemo(() => ({
+    name: displayName,
+    description: displayDesc,
+    location: displayLoc,
+    phone: phoneNumber,
+    meetupPoint,
+    meetupDetails,
+  }), [displayName, displayDesc, displayLoc, phoneNumber, meetupPoint, meetupDetails]);
 
   const distance = params.distance || '1.2 km';
   const time = params.time || '15-20 mins';
@@ -321,7 +334,7 @@ export default function VendorDetails() {
 
             <View style={styles.infoBox}>
               <View style={styles.titleRowMinimal}>
-                <Text style={styles.vendorName}>{displayName}</Text>
+                <Text style={styles.vendorName}>{profileSummary.name}</Text>
                 <TouchableOpacity
                   style={[styles.favBtn, isFav && styles.favBtnActive]}
                   onPress={async () => {
@@ -358,11 +371,11 @@ export default function VendorDetails() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.description}>{displayDesc}</Text>
+              <Text style={styles.description}>{profileSummary.description}</Text>
 
               <View style={styles.locationDetail}>
                 <Ionicons name="location-outline" size={14} color="#888" />
-                <Text style={styles.locationText}>{displayLoc}</Text>
+                <Text style={styles.locationText}>{profileSummary.location}</Text>
               </View>
 
               <View style={styles.contactCard}>
@@ -371,21 +384,21 @@ export default function VendorDetails() {
                     <Ionicons name="call" size={16} color={COLORS.primary} style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Phone</Text>
                   </View>
-                  <Text style={styles.contactValue}>{phoneNumber}</Text>
+                  <Text style={styles.contactValue}>{profileSummary.phone}</Text>
                 </View>
                 <View style={styles.contactRow}>
                   <View style={styles.contactLabelRow}>
                     <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.primary} style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Meet-up</Text>
                   </View>
-                  <Text style={styles.contactValue}>{meetupPoint}</Text>
+                  <Text style={styles.contactValue}>{profileSummary.meetupPoint}</Text>
                 </View>
                 <View style={styles.contactRow}>
                   <View style={styles.contactLabelRow}>
                     <Feather name="map-pin" size={16} color={COLORS.primary} style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Details</Text>
                   </View>
-                  <Text style={styles.contactValue}>{meetupDetails}</Text>
+                  <Text style={styles.contactValue}>{profileSummary.meetupDetails}</Text>
                 </View>
                 <View style={styles.contactActions}>
                   {(vendorProfile?.mobile || params.mobile) && (

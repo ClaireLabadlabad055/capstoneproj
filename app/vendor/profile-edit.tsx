@@ -23,18 +23,28 @@ const { width } = Dimensions.get('window');
 
 export default function VendorProfileEdit() {
   const router = useRouter();
-  const { vendorProfile, saveVendorProfile } = useVendor();
+  const { vendorProfile, saveVendorProfile, uploadCoverImage } = useVendor();
 
   const [vendorName, setVendorName] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
+  const [meetupPoint, setMeetupPoint] = useState('');
+  const [meetupDetails, setMeetupDetails] = useState('');
+  const [mobile, setMobile] = useState('');
   const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [coverBase64, setCoverBase64] = useState<string | null>(null);
 
   useEffect(() => {
     if (vendorProfile) {
       setVendorName(vendorProfile.name || '');
       setDescription(vendorProfile.description || '');
       setLocation(vendorProfile.location || '');
+      setMeetupPoint(vendorProfile.meetupPoint || '');
+      setMeetupDetails(vendorProfile.meetupDetails || '');
+      setMobile(vendorProfile.mobile || '');
+      if (typeof vendorProfile.coverImage === 'string') {
+        setCoverImage(vendorProfile.coverImage);
+      }
     }
   }, [vendorProfile]);
 
@@ -45,10 +55,13 @@ export default function VendorProfileEdit() {
       allowsEditing: true,
       aspect: [16, 9],
       quality: 1,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setCoverImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setCoverImage(asset.uri);
+      setCoverBase64(asset.base64 || null);
     }
   };
 
@@ -58,10 +71,21 @@ export default function VendorProfileEdit() {
       return;
     }
 
+    if (coverImage && coverImage.startsWith('file://')) {
+      const uploadResult = await uploadCoverImage({ uri: coverImage, base64: coverBase64 || undefined });
+      if (!uploadResult?.success) {
+        Alert.alert('Cover photo update failed', 'Your shop photo could not be uploaded right now.');
+        return;
+      }
+    }
+
     const result = await saveVendorProfile({
       name: vendorName,
       description,
       location,
+      meetupPoint,
+      meetupDetails,
+      mobile,
     });
 
     if (!result.success) {
@@ -139,6 +163,39 @@ export default function VendorProfileEdit() {
                 multiline
                 numberOfLines={4}
                 placeholder="Tell customers about your delicacies..."
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.fieldLabel}>Pickup Landmark</Text>
+              <TextInput
+                style={styles.input}
+                value={meetupPoint}
+                onChangeText={setMeetupPoint}
+                placeholder="e.g. Near the market"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.fieldLabel}>Pickup Details</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={meetupDetails}
+                onChangeText={setMeetupDetails}
+                multiline
+                numberOfLines={3}
+                placeholder="Tell customers where to meet or how to receive the order"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.fieldLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.input}
+                value={mobile}
+                onChangeText={setMobile}
+                keyboardType="phone-pad"
+                placeholder="e.g. 09123456789"
               />
             </View>
 

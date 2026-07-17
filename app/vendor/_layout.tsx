@@ -29,9 +29,27 @@ export default function VendorLayout() {
       <Stack.Screen 
         name="inventory" 
         options={{ 
-          presentation: 'card', // Standard slide transition
+          presentation: 'card',
           headerTitle: 'My Inventory',
-          headerShown: false // Set to false if you want to keep your custom top bar
+          headerShown: false
+        }} 
+      />
+
+      <Stack.Screen 
+        name="profile-edit" 
+        options={{
+          presentation: 'card',
+          headerTitle: 'Shop Profile',
+          headerShown: false
+        }} 
+      />
+
+      <Stack.Screen 
+        name="history" 
+        options={{
+          presentation: 'card',
+          headerTitle: 'Vendor Order History',
+          headerShown: false
         }} 
       />
 

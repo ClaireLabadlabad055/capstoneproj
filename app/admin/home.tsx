@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   View, 
   Text, 
@@ -11,51 +12,136 @@ import {
   Platform 
 } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+
+const getVendorStatus = (item: any) => {
+  const approvalStatus = String(item?.approval_status || item?.status || '').trim().toLowerCase();
+  const statusValue = String(item?.status || '').trim().toLowerCase();
+
+  if (['approved', 'active', 'accepted', 'verified', 'complete'].includes(approvalStatus) || ['approved', 'active', 'accepted', 'verified', 'complete'].includes(statusValue)) {
+    return 'Active';
+  }
+
+  if (['rejected', 'declined', 'denied'].includes(approvalStatus) || ['rejected', 'declined', 'denied'].includes(statusValue)) {
+    return 'Rejected';
+  }
+
+  return 'Pending';
+};
 import { COLORS, SHADOWS } from '../../styles/globalStyles';
+import { supabase } from '../../lib/supabaseClient';
 
 // Get device width for responsive grid
 const { width } = Dimensions.get('window');
 
-const PLATFORM_STATS = [
-  { 
-    id: '1', 
-    label: 'Total Sales', 
-    value: '₱142,500', 
-    icon: 'currency-php', 
-    color: '#4F46E5' 
-  },
-  { 
-    id: '2', 
-    label: 'Active Vendors', 
-    value: '12', 
-    icon: 'storefront-outline', 
-    color: '#059669' 
-  },
-  { 
-    id: '3', 
-    label: 'Total Orders', 
-    value: '842', 
-    icon: 'shopping-outline', 
-    color: '#D97706' 
-  },
-  { 
-    id: '4', 
-    label: 'New Users', 
-    value: '156', 
-    icon: 'account-plus-outline', 
-    color: '#7C3AED' 
-  },
-];
-
-const RECENT_VENDORS = [
-  { id: 'v1', name: 'Takoyaki Corner', status: 'Active', sales: '₱12,400', rating: 4.8 },
-  { id: 'v2', name: 'Siomai House', status: 'Pending', sales: '₱0', rating: 0 },
-  { id: 'v3', name: 'Fruit Shake Hub', status: 'Active', sales: '₱8,200', rating: 4.5 },
-];
-
 export default function AdminDashboard() {
   const router = useRouter();
+  const [merchantCount, setMerchantCount] = useState(0);
+  const [customerCount, setCustomerCount] = useState(0);
+  const [orderCount, setOrderCount] = useState(0);
+  const [topMerchants, setTopMerchants] = useState<any[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const [{ data: merchantData, error: merchantError, count: merchantTotal },
+        { data: customerData, error: customerError, count: customerTotal },
+        { data: orderData, error: orderError, count: orderTotal }] = await Promise.all([
+          supabase.from('merchants').select('id', { count: 'exact' }),
+          supabase.from('customers').select('id', { count: 'exact' }),
+          supabase.from('orders').select('id', { count: 'exact' }),
+      ]);
+
+      if (merchantError) console.warn('Merchant count fetch error:', merchantError.message);
+      if (customerError) console.warn('Customer count fetch error:', customerError.message);
+      if (orderError) console.warn('Order count fetch error:', orderError.message);
+
+      const activeMerchants = (merchantData || []).filter((item: any) => getVendorStatus(item) === 'Active');
+
+      setMerchantCount(activeMerchants.length);
+      setCustomerCount(customerTotal ?? customerData?.length ?? 0);
+      setOrderCount(orderTotal ?? orderData?.length ?? 0);
+
+      const { data: merchants, error: topMerchantError } = await supabase
+        .from('merchants')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(4);
+
+      if (topMerchantError) {
+        console.warn('Top merchants fetch error:', topMerchantError.message);
+        setTopMerchants([]);
+      } else {
+        setTopMerchants(merchants || []);
+      }
+
+      let localPendingAdjustment = 0;
+      try {
+        const pendingSignalRaw = await AsyncStorage.getItem('approval_sync_flag');
+        if (pendingSignalRaw) {
+          const pendingSignal = JSON.parse(pendingSignalRaw);
+          localPendingAdjustment = Number(pendingSignal?.delta || 0);
+          if (localPendingAdjustment > 0) {
+            await AsyncStorage.removeItem('approval_sync_flag');
+          }
+        }
+      } catch (storageError) {
+        console.warn('Unable to read approval sync signal:', storageError);
+      }
+
+      const [merchantResponse, customerResponse] = await Promise.all([
+        supabase.from('merchants').select('*'),
+        supabase.from('customers').select('*'),
+      ]);
+
+      const merchantPendingCount = (merchantResponse.data || []).filter((item: any) => getVendorStatus(item) === 'Pending').length;
+
+      const customerPendingCount = (customerResponse.data || []).filter((item: any) => {
+        const approvalStatus = String(item?.approval_status || '').trim().toLowerCase();
+        const statusValue = String(item?.status || '').trim().toLowerCase();
+        if (['approved', 'active', 'accepted', 'verified', 'complete'].includes(approvalStatus) || ['approved', 'active', 'accepted', 'verified', 'complete'].includes(statusValue)) {
+          return false;
+        }
+        if (['rejected', 'declined', 'denied'].includes(approvalStatus) || ['rejected', 'declined', 'denied'].includes(statusValue)) {
+          return false;
+        }
+        return approvalStatus === 'pending' || approvalStatus === 'pending approval' || approvalStatus === 'pending review'
+          || statusValue === 'pending' || statusValue === 'pending approval' || statusValue === 'pending review';
+      }).length;
+
+      setPendingApprovals(Math.max(0, merchantPendingCount + customerPendingCount - localPendingAdjustment));
+    } catch (error) {
+      console.error('Admin dashboard fetch error:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboardData();
+      return undefined;
+    }, [fetchDashboardData])
+  );
+
+  useEffect(() => {
+    const unsubscribe = router.addListener?.('focus', () => {
+      fetchDashboardData();
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [fetchDashboardData, router]);
+
+  const platformStats = [
+    { id: '1', label: 'Active Vendors', value: String(merchantCount), icon: 'storefront-outline', color: '#059669' },
+    { id: '2', label: 'Total Orders', value: String(orderCount), icon: 'shopping-outline', color: '#D97706' },
+    { id: '3', label: 'Customers', value: String(customerCount), icon: 'account-multiple-outline', color: '#7C3AED' },
+    { id: '4', label: 'Pending Reviews', value: String(pendingApprovals), icon: 'clock-outline', color: '#4F46E5' },
+  ];
 
   const handleLogout = () => {
     router.replace('/login');
@@ -86,7 +172,7 @@ export default function AdminDashboard() {
       >
         {/* --- KPI STATS GRID --- */}
         <View style={styles.statsGrid}>
-          {PLATFORM_STATS.map((stat) => (
+          {platformStats.map((stat) => (
             <View key={stat.id} style={[styles.statCard, SHADOWS?.small]}>
               <View style={[styles.iconCircle, { backgroundColor: stat.color + '15' }]}>
                 <MaterialCommunityIcons name={stat.icon as any} size={22} color={stat.color} />
@@ -98,7 +184,7 @@ export default function AdminDashboard() {
         </View>
 
         {/* --- QUICK ACTIONS --- */}
-        <Text style={styles.sectionTitle}>System Control</Text>
+        <Text style={[styles.sectionTitle, styles.actionTitle]}>System Control</Text>
         <View style={styles.actionRow}>
           <TouchableOpacity 
             style={[styles.actionCard, SHADOWS?.small]} 
@@ -118,7 +204,37 @@ export default function AdminDashboard() {
               <Feather name="check-square" size={24} color="#D97706" />
             </View>
             <Text style={styles.actionText}>Approvals</Text>
-            <View style={styles.badge}><Text style={styles.badgeText}>2</Text></View>
+            <View style={styles.badge}><Text style={styles.badgeText}>{pendingApprovals}</Text></View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, SHADOWS?.small]} 
+            onPress={() => router.push('/admin/transactions')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#ECFDF5' }]}> 
+              <Feather name="activity" size={24} color="#059669" />
+            </View>
+            <Text style={styles.actionText}>Transactions</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, SHADOWS?.small]} 
+            onPress={() => router.push('/admin/audits')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#EFF6FF' }]}> 
+              <Feather name="clipboard" size={24} color="#4F46E5" />
+            </View>
+            <Text style={styles.actionText}>Menu Audits</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, SHADOWS?.small]} 
+            onPress={() => router.push('/admin/support')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}> 
+              <Feather name="message-square" size={24} color="#D97706" />
+            </View>
+            <Text style={styles.actionText}>Support</Text>
           </TouchableOpacity>
         </View>
 
@@ -128,31 +244,27 @@ export default function AdminDashboard() {
           <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
         </View>
 
-        {RECENT_VENDORS.map((vendor) => (
+        {topMerchants.map((vendor) => (
           <TouchableOpacity 
             key={vendor.id} 
             style={styles.vendorItem}
-            // NAVIGATE TO DETAILS
             onPress={() => router.push({
               pathname: '/admin/vendor-details',
-              params: { id: vendor.id, name: vendor.name }
+              params: { id: vendor.id, name: vendor.business_name || vendor.full_name }
             })}
           >
             <View style={styles.vendorInfo}>
               <View style={styles.vendorAvatar}>
-                <Text style={styles.avatarText}>{vendor.name.charAt(0)}</Text>
+                <Text style={styles.avatarText}>{(vendor.business_name || vendor.full_name || 'V').charAt(0)}</Text>
               </View>
               <View>
-                <Text style={styles.vendorNameText}>{vendor.name}</Text>
+                <Text style={styles.vendorNameText}>{vendor.business_name || vendor.full_name || 'Unnamed Vendor'}</Text>
                 <View style={styles.statusRow}>
-                  <View style={[styles.statusDot, { backgroundColor: vendor.status === 'Active' ? '#10B981' : '#F59E0B' }]} />
-                  <Text style={styles.statusText}>{vendor.status}</Text>
+                  <View style={[styles.statusDot, { backgroundColor: getVendorStatus(vendor) === 'Pending' ? '#F59E0B' : getVendorStatus(vendor) === 'Rejected' ? '#EF4444' : '#10B981' }]} />
+                  <Text style={styles.statusText}>{getVendorStatus(vendor)}</Text>
                 </View>
+                <Text style={[styles.categoryTag, { marginTop: 4 }]}>{vendor.address || vendor.barangay || vendor.location || 'No address available'}</Text>
               </View>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.vendorSales}>{vendor.sales}</Text>
-              <Text style={styles.vendorRating}>⭐ {vendor.rating}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -192,7 +304,7 @@ const styles = StyleSheet.create({
   welcomeText: { fontSize: 24, fontWeight: '900', color: '#1E293B' },
   logoutBtn: { padding: 12, backgroundColor: '#FFF1F1', borderRadius: 14 },
   scrollContent: { padding: 20, paddingTop: 10 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 25 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 18 },
   statCard: { 
     backgroundColor: '#FFF', 
     width: (width - 55) / 2, // Uses the width constant correctly
@@ -203,13 +315,14 @@ const styles = StyleSheet.create({
   iconCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   statValue: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
   statLabel: { fontSize: 12, color: '#64748B', fontWeight: '700', marginTop: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 15 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 12 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 15 },
   viewAll: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
-  actionRow: { flexDirection: 'row', gap: 15, marginBottom: 35 },
-  actionCard: { flex: 1, backgroundColor: '#FFF', padding: 22, borderRadius: 28, alignItems: 'center' },
-  actionIcon: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  actionText: { fontSize: 13, fontWeight: '900', color: '#334155' },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 30 },
+  actionTitle: { marginBottom: 8 },
+  actionCard: { width: '47%', backgroundColor: '#FFF', padding: 16, borderRadius: 24, alignItems: 'center', minHeight: 130 },
+  actionIcon: { width: 52, height: 52, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  actionText: { fontSize: 12, fontWeight: '900', color: '#334155', textAlign: 'center' },
   badge: { position: 'absolute', top: 18, right: 18, backgroundColor: '#EF4444', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   badgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   vendorItem: { 

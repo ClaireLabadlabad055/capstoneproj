@@ -16,11 +16,13 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { getRedirectRouteForRole } from './utils/roleRouting';
 
 export default function LoginScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { recentLoginStatus, login } = useAuth();
+  const pendingApprovalNotice = params?.pendingApproval === 'true';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function LoginScreen() {
     try {
       const profile = await login(email.toLowerCase().trim(), password);
       const role = profile?.role || 'customer';
-      router.replace(role === 'merchant' ? '/vendor/home' : '/customer/home');
+      router.replace(getRedirectRouteForRole(role));
     } catch (error: any) {
       Alert.alert("Login Failed", error.message || 'Unable to sign in.');
     } finally {
@@ -90,6 +92,12 @@ export default function LoginScreen() {
                 <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
                 <View style={styles.brandLine} />
               </View>
+
+              {pendingApprovalNotice && (
+                <View style={styles.noticeBanner}>
+                  <Text style={styles.noticeText}>Your registration was submitted successfully. Please wait for the admin to approve it before signing in.</Text>
+                </View>
+              )}
 
               <View style={styles.form}>
               <View style={styles.inputGroup}>
@@ -200,6 +208,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start' 
   },
   form: { width: '100%' },
+  noticeBanner: { backgroundColor: '#FFF7ED', borderColor: '#FDBA74', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
+  noticeText: { color: '#9A2C00', fontSize: 13, fontWeight: '600', lineHeight: 18 },
   inputGroup: {
     marginBottom: 14
   },

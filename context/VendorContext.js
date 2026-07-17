@@ -17,7 +17,59 @@ const defaultVendorProfile = {
   coverImage: require('../assets/images/cstbg.jpg'),
 };
 
+const normalizeApprovalStatus = (value) => {
+  const normalizedValue = String(value || '').trim().toLowerCase();
+  if (['approved', 'active', 'accepted', 'verified', 'complete'].includes(normalizedValue)) return 'approved';
+  if (['rejected', 'declined', 'denied'].includes(normalizedValue)) return 'rejected';
+  if (['pending', 'pending approval', 'pending review'].includes(normalizedValue)) return 'pending';
+  return normalizedValue;
+};
+
+export const buildVendorProfile = ({
+  targetUserId,
+  merchantData,
+  customerData,
+  profileData,
+  persistedProfile,
+  userData,
+  defaultProfile = defaultVendorProfile,
+}) => ({
+  ...defaultProfile,
+  ...(persistedProfile || {}),
+  id: targetUserId,
+  name: merchantData?.business_name || customerData?.full_name || profileData?.full_name || userData?.full_name || persistedProfile?.name || defaultProfile.name,
+  description: persistedProfile?.description || (merchantData?.delicacy_type ? `${merchantData.delicacy_type} from your kitchen.` : defaultProfile.description),
+  location: merchantData?.barangay ? `${merchantData.barangay}, Toledo City` : customerData?.address || profileData?.address || persistedProfile?.location || defaultProfile.location,
+  favorite: persistedProfile?.favorite || false,
+  meetupPoint: merchantData?.pickup_landmark || persistedProfile?.meetupPoint || defaultProfile.meetupPoint,
+  meetupDetails: persistedProfile?.meetupDetails || merchantData?.pickup_details || defaultProfile.meetupDetails,
+  mobile: customerData?.phone || profileData?.phone || persistedProfile?.mobile || defaultProfile.mobile,
+  coverImage: persistedProfile?.coverImage || defaultProfile.coverImage,
+  approvalStatus: normalizeApprovalStatus(merchantData?.approval_status || customerData?.approval_status || merchantData?.status || customerData?.status || persistedProfile?.approvalStatus || persistedProfile?.approval_status || ''),
+  approval_status: normalizeApprovalStatus(merchantData?.approval_status || customerData?.approval_status || merchantData?.status || customerData?.status || persistedProfile?.approval_status || persistedProfile?.approvalStatus || ''),
+});
+
 const getVendorStorageKey = (userId) => `vendor_profile_${userId}`;
+
+const isMissingColumnError = (error) => {
+  const message = error?.message || '';
+  return message.includes('Could not find the') || message.includes('column') || message.includes('schema cache');
+};
+
+const updateWithFallback = async (table, id, payload, fallbackPayloads = []) => {
+  const attempts = [payload, ...fallbackPayloads].filter((item) => item && Object.keys(item).length > 0);
+  if (!attempts.length) return { success: true, skipped: true };
+
+  let lastError = null;
+  for (const attemptPayload of attempts) {
+    const { error } = await supabase.from(table).update(attemptPayload).eq('id', id);
+    if (!error) return { success: true };
+    lastError = error;
+    if (!isMissingColumnError(error)) throw error;
+  }
+
+  return { success: false, error: lastError };
+};
 
 const saveVendorProfileToStorage = async (userId, profile) => {
   if (!userId) return;
@@ -64,36 +116,42 @@ export const VendorProvider = ({ children }) => {
       const customerData = customerResponse.data;
       const profileData = profileResponse.data;
 
-          const mergedProfile = {
-        ...defaultVendorProfile,
-        ...(persistedProfile || {}),
-        id: targetUserId,
-        name: merchantData?.business_name || customerData?.full_name || profileData?.full_name || userData?.full_name || persistedProfile?.name || 'Your Kitchen',
-        description: persistedProfile?.description || (merchantData?.delicacy_type ? `${merchantData.delicacy_type} from your kitchen.` : 'Freshly prepared delicacies for your customers.'),
-        location: merchantData?.barangay ? `${merchantData.barangay}, Toledo City` : customerData?.address || profileData?.address || persistedProfile?.location || 'Toledo City',
-        favorite: persistedProfile?.favorite || false,
-        meetupPoint: merchantData?.pickup_landmark || persistedProfile?.meetupPoint || 'Pickup Point',
-        meetupDetails: persistedProfile?.meetupDetails || merchantData?.pickup_details || '',
-        mobile: customerData?.phone || profileData?.phone || persistedProfile?.mobile || '',
-        coverImage: ((): any => {
-          const val = merchantData?.cover_image || persistedProfile?.coverImage || defaultVendorProfile.coverImage;
-          if (typeof val === 'string' && !val.startsWith('http')) {
-            try {
-              let bucket = 'covers';
-              const path = val;
-              if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
-              const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
-              return publicData?.publicUrl || val;
-            } catch (e) {
-              return val;
-            }
+          const mergedProfile = buildVendorProfile({
+        targetUserId,
+        merchantData,
+        customerData,
+        profileData,
+        persistedProfile,
+        userData,
+        defaultProfile: defaultVendorProfile,
+      });
+
+      const mergedCoverImage = ((): any => {
+        const val = merchantData?.cover_image || persistedProfile?.coverImage || defaultVendorProfile.coverImage;
+        if (typeof val === 'string' && !val.startsWith('http')) {
+          try {
+            let bucket = 'covers';
+            const path = val;
+            if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
+            const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
+            return publicData?.publicUrl || val;
+          } catch (e) {
+            return val;
           }
-          return val;
-        })(),
+        }
+        return val;
+      })();
+
+      const finalProfile = {
+        ...mergedProfile,
+        coverImage: mergedCoverImage,
       };
 
-      setVendorProfile(mergedProfile);
-      await saveVendorProfileToStorage(targetUserId, mergedProfile);
+      setVendorProfile(finalProfile);
+      await saveVendorProfileToStorage(targetUserId, finalProfile);
+
+      setVendorProfile(finalProfile);
+      await saveVendorProfileToStorage(targetUserId, finalProfile);
     } catch (error) {
       console.error('Vendor profile sync failed:', error);
     } finally {
@@ -102,8 +160,27 @@ export const VendorProvider = ({ children }) => {
   }, [user?.id, userData?.full_name]);
 
   useEffect(() => {
-    syncVendorProfile();
-  }, [syncVendorProfile]);
+    if (!user?.id) {
+      setVendorProfile(defaultVendorProfile);
+      setLoading(false);
+      return;
+    }
+
+    syncVendorProfile(user.id);
+
+    const channel = supabase.channel(`vendor-profile-${user.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'merchants', filter: `id=eq.${user.id}` }, () => {
+        syncVendorProfile(user.id);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'customers', filter: `id=eq.${user.id}` }, () => {
+        syncVendorProfile(user.id);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, syncVendorProfile]);
 
   const updateProfile = (newData) => {
     setVendorProfile((prev) => {
@@ -178,52 +255,73 @@ export const VendorProvider = ({ children }) => {
 
     try {
       const merchantUpdates = {};
-      const customerUpdates = {};
       const profileUpdates = {};
+      const customerUpdates = {};
 
       if (typeof updates.name !== 'undefined') merchantUpdates.business_name = updates.name;
       if (typeof updates.location !== 'undefined') {
         merchantUpdates.barangay = updates.location;
-        customerUpdates.address = updates.location;
         profileUpdates.address = updates.location;
+        customerUpdates.address = updates.location;
       }
       if (typeof updates.meetupDetails !== 'undefined') {
         merchantUpdates.pickup_details = updates.meetupDetails;
         nextProfile.meetupDetails = updates.meetupDetails;
       }
       if (typeof updates.description !== 'undefined') {
+        merchantUpdates.delicacy_type = updates.description;
         nextProfile.description = updates.description;
       }
       if (typeof updates.mobile !== 'undefined') {
-        // Some schema variants keep phone in profiles instead of customers.
         profileUpdates.phone = updates.mobile;
+        customerUpdates.phone = updates.mobile;
+        nextProfile.mobile = updates.mobile;
       }
       if (typeof updates.meetupPoint !== 'undefined') {
         merchantUpdates.pickup_landmark = updates.meetupPoint;
       }
 
-      const requests = [];
+      let wroteToDatabase = false;
+
       if (Object.keys(merchantUpdates).length) {
-        requests.push(supabase.from('merchants').update(merchantUpdates).eq('id', user.id));
-      }
-      if (Object.keys(customerUpdates).length) {
-        requests.push(supabase.from('customers').update(customerUpdates).eq('id', user.id));
-      }
-      if (Object.keys(profileUpdates).length) {
-        requests.push(supabase.from('profiles').update(profileUpdates).eq('id', user.id));
+        const result = await updateWithFallback(
+          'merchants',
+          user.id,
+          merchantUpdates,
+          [
+            { business_name: merchantUpdates.business_name },
+            { barangay: merchantUpdates.barangay },
+            { pickup_details: merchantUpdates.pickup_details },
+            { pickup_landmark: merchantUpdates.pickup_landmark },
+            { delicacy_type: merchantUpdates.delicacy_type },
+          ].filter((item) => item && Object.keys(item).length > 0)
+        );
+        wroteToDatabase = wroteToDatabase || result.success;
       }
 
-      if (requests.length) {
-        const results = await Promise.all(requests);
-        const firstError = results.find((result) => result?.error);
-        if (firstError) {
-          throw firstError.error;
-        }
+      if (Object.keys(profileUpdates).length) {
+        const result = await updateWithFallback(
+          'profiles',
+          user.id,
+          profileUpdates,
+          [{ address: profileUpdates.address }, { phone: profileUpdates.phone }].filter((item) => item && Object.keys(item).length > 0)
+        );
+        wroteToDatabase = wroteToDatabase || result.success;
+      }
+
+      if (Object.keys(customerUpdates).length) {
+        const result = await updateWithFallback(
+          'customers',
+          user.id,
+          customerUpdates,
+          [{ address: customerUpdates.address }, { phone: customerUpdates.phone }].filter((item) => item && Object.keys(item).length > 0)
+        );
+        wroteToDatabase = wroteToDatabase || result.success;
       }
 
       await saveVendorProfileToStorage(user.id, nextProfile);
       await syncVendorProfile(user.id);
-      return { success: true };
+      return { success: true, savedLocally: true, syncedToDatabase: wroteToDatabase };
     } catch (error) {
       console.error('Failed to save vendor profile:', error);
       return { success: false, error };

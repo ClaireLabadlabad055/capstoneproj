@@ -67,17 +67,9 @@ const VendorProductCard = ({ item, onDelete }: { item: any, onDelete: (id: strin
 
 export default function VendorInventory() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const { products, addProduct, deleteProduct, loading, uploadProductImage } = useProducts();
-  const { vendorProfile, saveVendorProfile, uploadCoverImage } = useVendor();
-
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [tempName, setTempName] = useState(vendorProfile?.name || '');
-  const [tempDesc, setTempDesc] = useState(vendorProfile?.description || '');
-  const [tempLocation, setTempLocation] = useState(vendorProfile?.location || '');
-  const [tempMeetupPoint, setTempMeetupPoint] = useState(vendorProfile?.meetupPoint || '');
-  const [tempMeetupDetails, setTempMeetupDetails] = useState(vendorProfile?.meetupDetails || '');
-  const [tempMobile, setTempMobile] = useState(vendorProfile?.mobile || '');
+  const { vendorProfile } = useVendor();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -91,17 +83,6 @@ export default function VendorInventory() {
   const [newCategory, setNewCategory] = useState('Snacks'); // Category state preserved
   const [orderType, setOrderType] = useState('Single Order'); 
   const [newProductImage, setNewProductImage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isEditingProfile) {
-      setTempName(vendorProfile?.name || '');
-      setTempDesc(vendorProfile?.description || '');
-      setTempLocation(vendorProfile?.location || '');
-      setTempMeetupPoint(vendorProfile?.meetupPoint || '');
-      setTempMeetupDetails(vendorProfile?.meetupDetails || '');
-      setTempMobile(vendorProfile?.mobile || '');
-    }
-  }, [isEditingProfile, vendorProfile?.name, vendorProfile?.description, vendorProfile?.location, vendorProfile?.meetupPoint, vendorProfile?.meetupDetails, vendorProfile?.mobile]);
 
   const refreshChatMessages = async (vendorId = user?.id) => {
     if (!vendorId) return;
@@ -136,47 +117,22 @@ export default function VendorInventory() {
   }, [showChat, user?.id]);
 
   const groupedProducts = useMemo(() => {
+    const currentVendorId = user?.id || vendorProfile?.id || null;
+    const currentVendorName = vendorProfile?.name || vendorProfile?.business_name || userData?.business_name || userData?.full_name || '';
+
     const vendorItems = (products || []).filter((p: any) => {
-      const matchesVendor = p.vendorName === vendorProfile?.name || p.vendorId === vendorProfile?.id || p.vendorName === vendorProfile?.name;
-      const matchesOrderType = p.orderType === 'Special Package' || p.orderType === 'Single Order';
-      return matchesVendor || matchesOrderType;
+      const productVendorId = p.vendorId || p.vendor_id || null;
+      const productVendorName = p.vendorName || p.vendor_name || '';
+      const matchesVendorId = Boolean(currentVendorId) && Boolean(productVendorId) && String(productVendorId) === String(currentVendorId);
+      const matchesVendorName = Boolean(currentVendorName) && Boolean(productVendorName) && String(productVendorName).toLowerCase() === String(currentVendorName).toLowerCase();
+      return matchesVendorId || matchesVendorName;
     });
+
     return [
       { title: 'Special Packages', icon: 'gift-outline', data: vendorItems.filter((p: any) => p.orderType === 'Special Package') },
       { title: 'Single Orders', icon: 'food-variant', data: vendorItems.filter((p: any) => p.orderType !== 'Special Package') },
     ].filter(section => section.data.length > 0);
-  }, [products, vendorProfile.name, vendorProfile?.id]);
-
-  const handleSaveProfile = async () => {
-    if (!tempName.trim() || !tempLocation.trim()) {
-      Alert.alert('Error', 'Store name and location are required.');
-      return;
-    }
-
-    const updates: any = {
-      name: tempName.trim(),
-      location: tempLocation.trim(),
-      meetupPoint: tempMeetupPoint.trim(),
-      mobile: tempMobile.trim(),
-    };
-    const descValue = tempDesc.trim();
-    const meetupDetailsValue = tempMeetupDetails.trim();
-
-    if (descValue !== vendorProfile?.description) {
-      updates.description = descValue;
-    }
-    if (meetupDetailsValue !== vendorProfile?.meetupDetails) {
-      updates.meetupDetails = meetupDetailsValue;
-    }
-
-    const result = await saveVendorProfile(updates);
-
-    if (result?.success !== false) {
-      setIsEditingProfile(false);
-    } else {
-      Alert.alert('Save failed', result?.error?.message || 'Unable to save your profile changes.');
-    }
-  };
+  }, [products, user?.id, vendorProfile?.id, vendorProfile?.name, vendorProfile?.business_name, userData?.business_name, userData?.full_name]);
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !user?.id) return;
@@ -248,88 +204,20 @@ export default function VendorInventory() {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       <View>
-        <View style={styles.headerImageWrapper}>
-          <Image source={typeof vendorProfile.coverImage === 'string' ? { uri: vendorProfile.coverImage } : vendorProfile.coverImage} style={styles.headerImage} />
-          <View style={styles.imageOverlay} />
+        <View style={styles.inventoryHeader}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={22} color={COLORS.secondary} /></TouchableOpacity>
-          <TouchableOpacity style={styles.cameraOverlay} onPress={async () => {
-            let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 9], quality: 1, base64: true });
-            if (!result.canceled && result.assets?.[0]) {
-              const asset = result.assets[0];
-              const uploadResult = await uploadCoverImage({ uri: asset.uri, base64: asset.base64 });
-              if (!uploadResult.success) {
-                Alert.alert('Upload failed', uploadResult.error?.message || 'Unable to save your cover photo.');
-              }
-            }
-          }}><Feather name="camera" size={18} color="#FFF" /></TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.inventoryTitle}>Inventory</Text>
+            <Text style={styles.inventorySubtitle}>Products and stock only</Text>
+          </View>
+          <TouchableOpacity style={styles.profileActionBtn} onPress={() => router.push('/vendor/profile-edit')}>
+            <Feather name="settings" size={14} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-          <View style={styles.infoBox}>
-            <View style={styles.titleRowMinimal}>
-              {isEditingProfile ? (
-                <TextInput style={styles.inputName} value={tempName} onChangeText={setTempName} blurOnSubmit={false} returnKeyType="next" />
-              ) : (
-                <Text style={styles.vendorName}>{vendorProfile?.name || 'Your Kitchen'}</Text>
-              )}
-              <TouchableOpacity style={[styles.editCircle, isEditingProfile && { backgroundColor: COLORS.primary }]} onPress={() => isEditingProfile ? handleSaveProfile() : setIsEditingProfile(true)}>
-                <Feather name={isEditingProfile ? 'check' : 'edit-2'} size={16} color={isEditingProfile ? '#FFF' : COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {isEditingProfile ? (
-              <>
-                <TextInput style={styles.inputDesc} value={tempDesc} onChangeText={setTempDesc} multiline placeholder="Short description" blurOnSubmit={false} returnKeyType="next" />
-                <TextInput style={styles.inputLocation} value={tempLocation} onChangeText={setTempLocation} placeholder="Location" blurOnSubmit={false} returnKeyType="next" />
-                <TextInput style={styles.inputLocation} value={tempMeetupPoint} onChangeText={setTempMeetupPoint} placeholder="Pickup landmark" blurOnSubmit={false} returnKeyType="next" />
-                <TextInput style={styles.inputLocation} value={tempMeetupDetails} onChangeText={setTempMeetupDetails} placeholder="Pickup details" blurOnSubmit={false} returnKeyType="next" />
-                <TextInput style={styles.inputLocation} value={tempMobile} onChangeText={setTempMobile} placeholder="Phone number" keyboardType="phone-pad" blurOnSubmit={false} returnKeyType="done" />
-              </>
-            ) : (
-              <>
-                <Text style={styles.description}>{vendorProfile?.description || 'Freshly prepared delicacies for your customers.'}</Text>
-                <View style={styles.locationDetail}>
-                  <Ionicons name="location-outline" size={14} color="#888" />
-                  <Text style={styles.locationText}>{vendorProfile?.location || 'Toledo City'}</Text>
-                </View>
-              </>
-            )}
-
-            <View style={styles.contactCard}>
-              <View style={styles.contactRow}>
-                <Feather name="phone" size={16} color={COLORS.primary} />
-                <Text style={styles.contactLabel}>Phone</Text>
-                <Text style={styles.contactValue}>{vendorProfile?.mobile || 'Phone not set'}</Text>
-              </View>
-              <View style={styles.contactRow}>
-                <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.contactLabel}>Meet-up</Text>
-                <Text style={styles.contactValue}>{vendorProfile?.meetupPoint || vendorProfile?.location || 'Pickup point not set'}</Text>
-              </View>
-              <View style={styles.contactRow}>
-                <Feather name="map-pin" size={16} color={COLORS.primary} />
-                <Text style={styles.contactLabel}>Details</Text>
-                <Text style={styles.contactValue}>{vendorProfile?.meetupDetails || 'Add pickup details'}</Text>
-              </View>
-              <View style={styles.contactActions}>
-                {vendorProfile?.mobile ? (
-                  <TouchableOpacity style={styles.contactActionBtn} onPress={() => Linking.openURL(`tel:${vendorProfile.mobile}`)}>
-                    <Feather name="phone-call" size={14} color="#FFF" />
-                    <Text style={styles.contactActionText}>Call</Text>
-                  </TouchableOpacity>
-                ) : null}
-                <TouchableOpacity style={[styles.contactActionBtn, styles.messageActionBtn]} onPress={() => setShowChat(true)}>
-                  <Feather name="message-circle" size={14} color="#FFF" />
-                  <Text style={styles.contactActionText}>Message</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity style={styles.addMainBtn} onPress={() => setModalVisible(true)}>
-              <Feather name="plus" size={18} color="#FFF" /><Text style={styles.addMainBtnText}>Add New Product</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+        <TouchableOpacity style={styles.addMainBtn} onPress={() => setModalVisible(true)}>
+          <Feather name="plus" size={18} color="#FFF" /><Text style={styles.addMainBtnText}>Add New Product</Text>
+        </TouchableOpacity>
       </View>
 
       <SectionList
@@ -460,33 +348,22 @@ export default function VendorInventory() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  headerImageWrapper: { height: 240, width: '100%' },
-  headerImage: { width: '100%', height: '100%' },
-  imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.1)' },
-  cameraOverlay: { position: 'absolute', bottom: 60, right: 25, backgroundColor: 'rgba(0,0,0,0.6)', padding: 12, borderRadius: 25 },
-  backBtn: { position: 'absolute', top: 50, left: 20, backgroundColor: '#FFF', padding: 10, borderRadius: 15, elevation: 5 },
-  infoBox: { paddingHorizontal: 25, paddingTop: 30, paddingBottom: 25, backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, marginTop: -40, elevation: 10 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  titleRowMinimal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  vendorName: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
-  inputName: { fontSize: 24, fontWeight: '900', color: COLORS.primary, borderBottomWidth: 1, borderBottomColor: '#EEE', flex: 1 },
-  editCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center' },
-  description: { fontSize: 13, color: '#666', marginTop: 10, lineHeight: 20 },
-  inputDesc: { fontSize: 13, backgroundColor: '#F9F9F9', padding: 10, borderRadius: 10, marginTop: 10 },
-  inputLocation: { fontSize: 13, backgroundColor: '#F9F9F9', padding: 10, borderRadius: 10, marginTop: 10 },
-  locationDetail: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 },
-  locationText: { fontSize: 12, color: '#888', fontWeight: '600' },
-  contactCard: { marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#EEE' },
-  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  contactLabel: { fontSize: 12, fontWeight: '800', color: COLORS.secondary },
-  contactValue: { flex: 1, fontSize: 12, color: '#666', fontWeight: '600' },
-  contactActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  contactActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14 },
-  messageActionBtn: { backgroundColor: COLORS.secondary },
-  contactActionText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  statTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F6F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
-  statText: { fontWeight: '800', color: COLORS.secondary, fontSize: 12 },
-  addMainBtn: { backgroundColor: COLORS.secondary, flexDirection: 'row', padding: 16, borderRadius: 20, justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 20 },
+  inventoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 20 : 14,
+    paddingBottom: 10,
+    marginTop: Platform.OS === 'android' ? 8 : 6,
+    backgroundColor: '#FFF'
+  },
+  headerContent: { flex: 1, marginLeft: 8, justifyContent: 'center' },
+  inventoryTitle: { fontSize: 22, fontWeight: '900', color: COLORS.secondary, lineHeight: 24 },
+  inventorySubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
+  backBtn: { backgroundColor: '#FFF', padding: 10, borderRadius: 15, elevation: 5, marginTop: 0 },
+  profileActionBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginLeft: 8, marginTop: 0 },
+  addMainBtn: { backgroundColor: COLORS.secondary, flexDirection: 'row', padding: 16, borderRadius: 20, justifyContent: 'center', alignItems: 'center', gap: 10, marginHorizontal: 20, marginTop: 12, marginBottom: 8 },
   addMainBtnText: { color: '#FFF', fontWeight: '900', fontSize: 15 },
   sectionHeader: { paddingHorizontal: 25, marginTop: 35, marginBottom: 15 },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 24 },

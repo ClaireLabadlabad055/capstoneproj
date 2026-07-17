@@ -24,40 +24,28 @@ export default function MyOrders() {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .order('created_at', { ascending: false });useEffect(() => {
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*');
-    
-    // Add this to your code
-    if (error) {
-      console.error("Database connection error:", error);
-    } else {
-      console.log("Successfully fetched orders from DB:", data);
-      setDbOrders(data);
-    }
-  };
-  fetchOrders();
-}, []);
+        .order('created_at', { ascending: false });
 
-
+      if (error) {
+        console.error('Error fetching orders:', error);
+        return;
+      }
 
       if (data) {
-        // Map database columns to match your UI components
-        const formatted = data.map(o => ({
+        const formatted = data.map((o: any) => ({
           id: o.id,
           date: new Date(o.created_at).toLocaleDateString(),
-          vendorName: o.vendor_name,
+          vendorName: o.vendor_name || o.vendorName || 'Toledo Vendor',
           total: o.total,
           status: o.status,
-          items: o.order_details || []
+          items: o.order_details || o.items || [],
+          reference: o.id,
+          customer_rating: o.customer_rating || null,
         }));
         setDbOrders(formatted);
-      } else if (error) {
-        console.error("Error fetching orders:", error);
       }
     };
+
     fetchOrders();
   }, []);
 
@@ -69,10 +57,13 @@ export default function MyOrders() {
     setQrModalVisible(true);
   };
 
-  const handleOrderReceived = async (orderId: string) => {
-    updateOrderStatus(orderId, 'Completed');
-    // Sync update to Supabase
-    await supabase.from('orders').update({ status: 'Completed' }).eq('id', orderId);
+  const handleOrderReceived = async (order: any) => {
+    setSelectedOrder(order);
+    updateOrderStatus(order.id, 'Completed');
+    const { error } = await supabase.from('orders').update({ status: 'Completed' }).eq('id', order.id);
+    if (error) {
+      console.error('Failed to update order status:', error);
+    }
     setRatingModalVisible(true);
   };
 
@@ -81,8 +72,33 @@ export default function MyOrders() {
     setRatingModalVisible(true);
   };
 
-  const submitRating = () => {
-    Alert.alert("Success", "Thank you for rating your ToledoGo experience!");
+  const selectRating = (value: number) => {
+    setRating(value);
+  };
+
+  const submitRating = async () => {
+    if (!selectedOrder) {
+      Alert.alert('Error', 'No order selected for rating.');
+      return;
+    }
+
+    if (rating <= 0) {
+      Alert.alert('Rate the Store', 'Please choose a star rating before submitting.');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('orders')
+      .update({ customer_rating: rating })
+      .eq('id', selectedOrder.id);
+
+    if (error) {
+      console.error('Failed to save rating:', error);
+      Alert.alert('Rating Failed', 'Unable to save your rating right now. Please try again later.');
+      return;
+    }
+
+    Alert.alert('Thank you!', 'Your rating has been saved.');
     setRatingModalVisible(false);
     setRating(0);
   };
@@ -98,19 +114,22 @@ export default function MyOrders() {
         <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.headerLeftAction}>
           <Feather name="arrow-left" size={24} color="#4A342E" />
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/customer/history' as any)} style={styles.headerRightAction}>
+          <Feather name="clock" size={18} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {allOrders.length > 0 ? (
           [...allOrders].reverse().map((order) => (
-            <View key={order.id} style={styles.orderCard}>
+            <TouchableOpacity key={order.id} style={styles.orderCard} activeOpacity={0.9} onPress={() => openQR(order)}>
               <View style={styles.cardHeader}>
                 <View>
                   <Text style={styles.orderDate}>{order.date || 'Today'}</Text>
                   <Text style={styles.orderId}>ID: {order.id.slice(-8).toUpperCase()}</Text>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: order.status === 'Completed' ? '#E8F5E9' : '#FFF3E0' }]}>
-                  <Text style={[styles.statusText, { color: order.status === 'Completed' ? '#2E7D32' : '#EF6C00' }]}>
+                  <Text style={[styles.statusText, { color: order.status === 'Completed' ? '#2E7D32' : '#EF6C00' }]}> 
                     {order.status || 'Pending'}
                   </Text>
                 </View>
@@ -134,7 +153,7 @@ export default function MyOrders() {
                 )}
 
                 {order.status === 'Ready' && (
-                  <TouchableOpacity style={[styles.actionBtn, styles.receivedBtn]} onPress={() => handleOrderReceived(order.id)}>
+                  <TouchableOpacity style={[styles.actionBtn, styles.receivedBtn]} onPress={() => handleOrderReceived(order)}>
                     <Text style={styles.receivedBtnText}>Order Received</Text>
                   </TouchableOpacity>
                 )}
@@ -146,7 +165,7 @@ export default function MyOrders() {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         ) : (
           <View style={styles.emptyState}>
@@ -161,8 +180,53 @@ export default function MyOrders() {
         )}
       </ScrollView>
 
-      {/* Modals remain exactly as you had them */}
-      {/* ... (Keep your existing Modal code here) ... */}
+      <Modal visible={qrModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.qrCard}>
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setQrModalVisible(false)}>
+              <Feather name="x" size={22} color="#4A342E" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Order QR</Text>
+            <Text style={styles.modalSub}>Show this to the merchant when picking up your order.</Text>
+            <View style={styles.qrBackground}>
+              {selectedOrder ? (
+                <QRCode value={String(selectedOrder.reference || selectedOrder.id)} size={170} />
+              ) : null}
+            </View>
+            <Text style={styles.modalVendor}>{selectedOrder?.vendorName || 'Toledo Vendor'}</Text>
+            <Text style={styles.modalSub}>Reference: {selectedOrder?.reference ? selectedOrder.reference.slice(-12).toUpperCase() : 'N/A'}</Text>
+            <TouchableOpacity style={styles.doneBtn} onPress={() => setQrModalVisible(false)}>
+              <Text style={styles.doneBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={ratingModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingCard}>
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setRatingModalVisible(false)}>
+              <Feather name="x" size={22} color="#4A342E" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Rate the Store</Text>
+            <Text style={styles.modalSub}>How was your experience with {selectedOrder?.vendorName || 'this merchant'}?</Text>
+            <View style={styles.starRow}>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <TouchableOpacity key={value} onPress={() => selectRating(value)}>
+                  <MaterialCommunityIcons
+                    name={value <= rating ? 'star' : 'star-outline'}
+                    size={32}
+                    color={value <= rating ? '#F59E0B' : '#CBD5E1'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.submitBtn} onPress={submitRating}>
+              <Text style={styles.submitBtnText}>Submit Rating</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -197,7 +261,12 @@ const styles = StyleSheet.create({
     fontWeight: '800', 
     color: '#4A342E',
   },
-  headerLeftAction: { 
+  headerLeftAction: {
+    padding: 8,
+    zIndex: 10,
+  },
+  headerRightAction: {
+    marginLeft: 'auto',
     padding: 8,
     zIndex: 10,
   },

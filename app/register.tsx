@@ -17,8 +17,34 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { COLORS } from '../styles/globalStyles';
+import { getRedirectRouteForRole } from './utils/roleRouting';
+import { CUSTOMER_HOME_CATEGORIES } from './utils/vendorCategories';
 
-const DELICACY_TYPES = ['Native Delicacies', 'Kakanin', 'Pastries', 'Seafood', 'Others'];
+const DELICACY_TYPES = [...CUSTOMER_HOME_CATEGORIES];
+
+const isMissingColumnError = (error: any) => {
+  const message = error?.message || '';
+  return message.includes('Could not find the') || message.includes('column') || message.includes('schema cache');
+};
+
+const upsertWithFallback = async (table: string, payload: any, fallbackPayload: any) => {
+  const { error } = await supabase.from(table).upsert([payload], { onConflict: 'id' });
+  if (!error) return;
+  if (!isMissingColumnError(error)) throw error;
+
+  const { error: fallbackError } = await supabase.from(table).upsert([fallbackPayload], { onConflict: 'id' });
+  if (fallbackError) throw fallbackError;
+};
+
+const ensureAuthenticated = async (email: string, password: string) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) return;
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    throw new Error('Unable to authenticate the new account for approval registration. Please check your Supabase auth setup.');
+  }
+};
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -50,26 +76,51 @@ export default function RegisterScreen() {
     try {
       const normalizedEmail = email.toLowerCase().trim();
 
-      // 1. Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({ 
         email: normalizedEmail, 
         password 
       });
-      if (authError) throw authError;
+
+      if (authError) {
+        const message = authError.message || '';
+        const normalizedMessage = message.toLowerCase();
+        if (normalizedMessage.includes('already registered') || normalizedMessage.includes('user already')) {
+          Alert.alert(
+            'Registration Pending',
+            'This account already exists or is already being reviewed. Please wait for admin approval before signing in.'
+          );
+          router.replace({
+            pathname: '/login',
+            params: { email: normalizedEmail, pendingApproval: 'true' }
+          });
+          return;
+        }
+        throw authError;
+      }
+
       if (!authData.user) throw new Error("No user created");
 
-      // 2. Insert into the base 'profiles' table
-      const { error: profileError } = await supabase.from('profiles').insert([{
+      await ensureAuthenticated(normalizedEmail, password);
+
+      const pendingApprovalStatus = 'pending';
+
+      const profilePayload = {
         id: authData.user.id,
         full_name: fullName,
-        email: normalizedEmail,
         role: role,
         phone: phone,
         address: address,
-      }]);
-      if (profileError) throw profileError;
+        approval_status: pendingApprovalStatus,
+      };
+      const profileFallbackPayload = {
+        id: authData.user.id,
+        full_name: fullName,
+        role: role,
+        phone: phone,
+        address: address,
+      };
+      await upsertWithFallback('profiles', profilePayload, profileFallbackPayload);
 
-      // 3. Handle Role-Specific logic
       if (role === 'merchant') {
         let finalDocPath = null;
         
@@ -80,16 +131,16 @@ export default function RegisterScreen() {
           const fileContent = await readAsStringAsync(verificationDoc, { 
             encoding: EncodingType.Base64 
           });
-        const { error: uploadError } = await supabase.storage
-          .from('verifications')
-          .upload(finalDocPath, toByteArray(fileContent), { 
-          contentType: `image/${fileExt}` 
-        });
+          const { error: uploadError } = await supabase.storage
+            .from('verifications')
+            .upload(finalDocPath, toByteArray(fileContent), { 
+              contentType: `image/${fileExt}` 
+            });
             
           if (uploadError) throw uploadError;
         }
 
-        const { error: merchantError } = await supabase.from('merchants').insert([{
+        const merchantPayload = {
           id: authData.user.id,
           business_name: businessName,
           delicacy_type: selectedDelicacy,
@@ -97,43 +148,77 @@ export default function RegisterScreen() {
           pickup_landmark: pickupLandmark,
           pickup_details: pickupDetails,
           verification_doc_url: finalDocPath,
-        }]);
-        if (merchantError) throw merchantError;
+          approval_status: pendingApprovalStatus,
+          status: 'Pending',
+        };
+        const merchantFallbackPayload = {
+          id: authData.user.id,
+          business_name: businessName,
+          delicacy_type: selectedDelicacy,
+          barangay: barangay,
+          pickup_landmark: pickupLandmark,
+          pickup_details: pickupDetails,
+          verification_doc_url: finalDocPath,
+          status: 'Pending',
+        };
+        await upsertWithFallback('merchants', merchantPayload, merchantFallbackPayload);
 
-        const { error: customerError } = await supabase.from('customers').insert([{
+        const customerPayload = {
           id: authData.user.id,
           full_name: fullName,
-          email: normalizedEmail,
           phone,
           address,
           role,
-          created_at: new Date().toISOString()
-        }]);
-        if (customerError) throw customerError;
-      } else {
-        const { error: customerError } = await supabase.from('customers').insert([{
+          approval_status: pendingApprovalStatus,
+          status: 'Pending',
+        };
+        const customerFallbackPayload = {
           id: authData.user.id,
           full_name: fullName,
-          email: normalizedEmail,
           phone,
           address,
           role,
-          created_at: new Date().toISOString()
-        }]);
-        if (customerError) throw customerError;
-      }
-
-      const loginProfile = await login(normalizedEmail, password);
-      const profileRole = loginProfile?.role || role;
-
-      if (profileRole === 'merchant') {
-        router.replace('/vendor/home');
+          status: 'Pending',
+        };
+        await upsertWithFallback('customers', customerPayload, customerFallbackPayload);
       } else {
-        router.replace('/customer/home');
+        const customerPayload = {
+          id: authData.user.id,
+          full_name: fullName,
+          phone,
+          address,
+          role,
+          approval_status: pendingApprovalStatus,
+          status: 'Pending',
+        };
+        const customerFallbackPayload = {
+          id: authData.user.id,
+          full_name: fullName,
+          phone,
+          address,
+          role,
+          status: 'Pending',
+        };
+        await upsertWithFallback('customers', customerPayload, customerFallbackPayload);
       }
+
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.warn('Sign out after pending registration failed:', signOutError);
+      }
+
+      Alert.alert(
+        'Registration Submitted',
+        'Your account is now pending admin approval. Please wait for the admin to approve it before signing in.'
+      );
+      router.replace({
+        pathname: '/login',
+        params: { email: normalizedEmail, pendingApproval: 'true' }
+      });
     } catch (e: any) {
       console.error("Registration Error:", e);
-      Alert.alert("Registration Error", e.message);
+      Alert.alert("Registration Error", e.message || 'Unable to complete registration.');
     }
   };
 
