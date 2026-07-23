@@ -35,6 +35,7 @@ CREATE POLICY "merchants_admin_insert_policy"
 
 DROP POLICY IF EXISTS "customers_admin_insert_policy" ON public.customers;
 CREATE POLICY "customers_admin_insert_policy"
+
   ON public.customers
   FOR INSERT
   WITH CHECK (true);

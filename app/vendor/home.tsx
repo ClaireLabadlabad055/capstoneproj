@@ -103,7 +103,7 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
 
 export default function VendorDashboard() {
   const router = useRouter();
-  const { user, userData } = useAuth();
+  const { user, userData, signOut } = useAuth(); // Included signOut if available in your context
   const { vendorProfile } = useVendor();
   const [orders, setOrders] = useState<Order[]>([]);
   const [liveApprovalStatus, setLiveApprovalStatus] = useState<string>('');
@@ -114,11 +114,11 @@ export default function VendorDashboard() {
     if (!activeVendorId) return;
 
     try {
-      // Fetch specifically from merchants table matching user id or vendor id
+      // Fetch specifically from merchants table matching the active vendor/user ID
       const { data: merchantData, error: merchantError } = await supabase
         .from('merchants')
         .select('*')
-        .or(`id.eq.${activeVendorId},user_id.eq.${activeVendorId}`)
+        .eq('id', activeVendorId)
         .maybeSingle();
 
       if (merchantError) {
@@ -330,7 +330,32 @@ export default function VendorDashboard() {
           <TouchableOpacity
             style={styles.logoutButton}
             activeOpacity={0.8}
-            onPress={() => Alert.alert("Logout", "Exit dashboard?", [{text: "Logout", style: "destructive", onPress: () => router.replace('/login')}])}
+            onPress={() => 
+              Alert.alert(
+                "Logout", 
+                "Exit dashboard?", 
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { 
+                    text: "Logout", 
+                    style: "destructive", 
+                    onPress: async () => {
+                      try {
+                        if (signOut) {
+                          await signOut();
+                        } else {
+                          await supabase.auth.signOut();
+                        }
+                      } catch (err) {
+                        console.error('Logout error:', err);
+                      } finally {
+                        router.replace('/login');
+                      }
+                    } 
+                  }
+                ]
+              )
+            }
           >
             <Feather name="log-out" size={18} color="#FFFFFF" />
           </TouchableOpacity>
