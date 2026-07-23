@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Mod
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
+import GradientHeader from '../_components/GradientHeader';
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext';
 import { supabase } from '../../lib/supabaseClient'; 
@@ -107,17 +108,20 @@ export default function MyOrders() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
-      <View style={styles.whiteHeader}>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>My Orders</Text>
-        </View>
-        <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.headerLeftAction}>
-          <Feather name="arrow-left" size={24} color="#4A342E" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/customer/history' as any)} style={styles.headerRightAction}>
-          <Feather name="clock" size={18} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      <GradientHeader
+        leftAction={
+          <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.headerLeftAction}>
+            <Feather name="arrow-left" size={24} color="#4A342E" />
+          </TouchableOpacity>
+        }
+        rightAction={
+          <TouchableOpacity onPress={() => router.push('/customer/history' as any)} style={styles.headerRightAction}>
+            <Feather name="clock" size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.headerTitleText}>My Orders</Text>
+      </GradientHeader>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {allOrders.length > 0 ? (

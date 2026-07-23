@@ -12,11 +12,15 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Dimensions
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { getRedirectRouteForRole } from './_utils/roleRouting';
+
+const { width } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -48,7 +52,6 @@ export default function LoginScreen() {
 
   React.useEffect(() => {
     const tryPrefill = async () => {
-      // if recentLoginStatus is present, prefer its email
       const seedEmail = (recentLoginStatus && recentLoginStatus.email) || (params?.email as string | undefined) || undefined;
       if (seedEmail) {
         setEmail(seedEmail);
@@ -67,120 +70,174 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F9F9FB" />
+      <StatusBar barStyle="light-content" backgroundColor="#451A03" />
       
-      <TouchableOpacity 
-        onPress={() => router.back()} 
-        style={styles.floatingBackBtn}
-        activeOpacity={0.6}
+      {/* Dynamic Warm Gradient Background matching your landing page theme */}
+      <LinearGradient
+        colors={['#451A03', '#7C2D12', '#C2410C']}
+        style={StyleSheet.absoluteFillObject}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
-        <Ionicons name="arrow-back" size={24} color="#1A202C" />
-      </TouchableOpacity>
+        {/* Decorative Modern Glowing Backdrop Elements */}
+        <View style={styles.glowCircleTop} />
+        <View style={styles.glowCircleBottom} />
 
-      <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-          style={{ flex: 1 }}
-        >
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+        <SafeAreaView style={{ flex: 1 }}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+            style={{ flex: 1 }}
           >
-            <View style={styles.card}>
-              <View style={styles.header}>
-                <Text style={styles.title}>{greetName ? `Welcome back, ${greetName}` : 'Welcome Back'}</Text>
-                <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
-                <View style={styles.brandLine} />
-              </View>
+            {/* Safe Back Button Placement Header with extra top padding to push it safely below status bar/time */}
+            <View style={styles.headerBar}>
+              <TouchableOpacity 
+                onPress={() => router.back()} 
+                style={styles.floatingBackBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={22} color="#451A03" />
+              </TouchableOpacity>
+            </View>
 
-              {pendingApprovalNotice && (
-                <View style={styles.noticeBanner}>
-                  <Text style={styles.noticeText}>Your registration was submitted successfully. Please wait for the admin to approve it before signing in.</Text>
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              <View style={styles.card}>
+                <View style={styles.header}>
+                  <Text style={styles.title}>{greetName ? `Welcome back, ${greetName}` : 'Welcome Back'}</Text>
+                  <Text style={styles.subtitle}>Login to access your dashboard and explore Toledo.</Text>
+                  <View style={styles.brandLine} />
                 </View>
-              )}
 
-              <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email Address</Text>
-                <TextInput 
-                  style={styles.cleanInput} 
-                  placeholder="e.g. claire@gmail.com" 
-                  placeholderTextColor="#A0AEC0"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
-                />
+                {pendingApprovalNotice && (
+                  <View style={styles.noticeBanner}>
+                    <Text style={styles.noticeText}>Your registration was submitted successfully. Please wait for the admin to approve it before signing in.</Text>
+                  </View>
+                )}
+
+                <View style={styles.form}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Email Address</Text>
+                    <TextInput 
+                      style={styles.cleanInput} 
+                      placeholder="e.g. claire@gmail.com" 
+                      placeholderTextColor="#A0AEC0"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Password</Text>
+                    <TextInput 
+                      style={styles.cleanInput} 
+                      placeholder="••••••••" 
+                      placeholderTextColor="#A0AEC0"
+                      secureTextEntry 
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                  </View>
+
+                  <TouchableOpacity 
+                    style={styles.forgotBtn}
+                    onPress={() => router.push('/forgot-password')}
+                  >
+                    <Text style={styles.forgotText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.submitBtn} 
+                    onPress={handleLogin}
+                    activeOpacity={0.9}
+                    disabled={loading}
+                  >
+                    <LinearGradient
+                      colors={['#C2410C', '#9A3412']}
+                      style={styles.btnGradient}
+                    >
+                      <Text style={styles.submitBtnText}>
+                        {loading ? "LOGGING IN..." : "LOG IN"}
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput 
-                  style={styles.cleanInput} 
-                  placeholder="••••••••" 
-                  placeholderTextColor="#A0AEC0"
-                  secureTextEntry 
-                  value={password}
-                  onChangeText={setPassword}
-                />
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>Don't have an account? </Text>
+                <TouchableOpacity onPress={() => router.push('/register')}>
+                  <Text style={styles.link}>Register Here</Text>
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity 
-                style={styles.forgotBtn}
-                onPress={() => router.push('/forgot-password')}
-              >
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.submitBtn} 
-                onPress={handleLogin}
-                activeOpacity={0.8}
-                disabled={loading}
-              >
-                <Text style={styles.submitBtnText}>
-                  {loading ? "LOGGING IN..." : "LOG IN"}
-                </Text>
-              </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => router.push('/register')}>
-                <Text style={styles.link}>Register Here</Text>
-              </TouchableOpacity>
-            </View>
-
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </LinearGradient>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9F9FB' },
-  floatingBackBtn: {
+  container: { flex: 1, backgroundColor: '#451A03' },
+  glowCircleTop: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 55 : 40,
-    left: 16,
-    zIndex: 9999,
-    elevation: 99,
-    padding: 12,
+    top: -width * 0.3,
+    right: -width * 0.2,
+    width: width * 0.9,
+    height: width * 0.9,
+    borderRadius: width * 0.45,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+  },
+  glowCircleBottom: {
+    position: 'absolute',
+    bottom: -width * 0.2,
+    left: -width * 0.3,
+    width: width * 0.8,
+    height: width * 0.8,
+    borderRadius: width * 0.4,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+  },
+  headerBar: {
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 24 : 40, // Lowered down further to stay clear of the device status time display
+    zIndex: 99,
+  },
+  floatingBackBtn: {
+    alignSelf: 'flex-start',
+    padding: 10,
     backgroundColor: '#FFFFFF',
     borderRadius: 50,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  scrollContainer: { 
+  scrollContent: { 
+    flexGrow: 1, 
+    justifyContent: 'center', 
     paddingHorizontal: 24, 
-    paddingBottom: 30 
+    paddingTop: 10,
+    paddingBottom: 40 
   },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 30 },
-  card: { backgroundColor: '#FFFFFF', padding: 22, borderRadius: 16, width: '100%', maxWidth: 520, alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 6 },
+  card: { 
+    backgroundColor: '#FFFFFF', 
+    padding: 26, 
+    borderRadius: 24, 
+    width: '100%', 
+    maxWidth: 520, 
+    alignSelf: 'center', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 12 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 20, 
+    elevation: 10 
+  },
   header: { 
     marginBottom: 24,
     alignItems: 'flex-start' 
@@ -202,7 +259,7 @@ const styles = StyleSheet.create({
   brandLine: { 
     width: 45, 
     height: 3.5, 
-    backgroundColor: '#A05C2C', 
+    backgroundColor: '#C2410C', 
     borderRadius: 2, 
     marginTop: 12,
     alignSelf: 'flex-start' 
@@ -211,7 +268,7 @@ const styles = StyleSheet.create({
   noticeBanner: { backgroundColor: '#FFF7ED', borderColor: '#FDBA74', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
   noticeText: { color: '#9A2C00', fontSize: 13, fontWeight: '600', lineHeight: 18 },
   inputGroup: {
-    marginBottom: 14
+    marginBottom: 16
   },
   label: { 
     color: '#2D3748', 
@@ -221,7 +278,7 @@ const styles = StyleSheet.create({
     marginLeft: 2
   },
   cleanInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
     padding: 15,
     borderRadius: 16,
     color: '#1A202C',
@@ -229,19 +286,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  forgotBtn: { alignSelf: 'flex-end', marginTop: 4 },
-  forgotText: { color: '#A05C2C', fontWeight: '700', fontSize: 14 },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8 },
+  forgotText: { color: '#C2410C', fontWeight: '700', fontSize: 14 },
   submitBtn: {
-    backgroundColor: '#A05C2C', 
-    paddingVertical: 16, 
-    borderRadius: 20, 
-    alignItems: 'center', 
-    marginTop: 24,
-    shadowColor: '#A05C2C',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4
+    borderRadius: 18, 
+    overflow: 'hidden',
+    marginTop: 18,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6
+  },
+  btnGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   submitBtnText: { 
     color: '#FFFFFF', 
@@ -254,10 +314,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     marginTop: 24 
   },
-  footerText: { color: '#4A5568', fontSize: 14 },
+  footerText: { color: '#FFEDD5', fontSize: 14, fontWeight: '500' },
   link: { 
-    color: '#A05C2C', 
-    fontWeight: '700', 
-    fontSize: 14 
+    color: '#FFFFFF', 
+    fontWeight: '800', 
+    fontSize: 14,
+    textDecorationLine: 'underline'
   }
 });

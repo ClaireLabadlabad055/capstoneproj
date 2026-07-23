@@ -1,22 +1,21 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   View, Text, Image, TouchableOpacity, SafeAreaView, StyleSheet, Alert,
-  Dimensions, SectionList, Modal, StatusBar, Linking, TextInput, ScrollView, KeyboardAvoidingView, Platform, Share
+  Dimensions, SectionList, Modal, StatusBar, Linking, TextInput, ScrollView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS } from '../../styles/globalStyles';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useVendor } from '../../context/VendorContext'; 
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { supabase } from '../../lib/supabaseClient'; // Make sure this path is correct
+import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../../lib/supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = (width - 50) / 2; 
 
-// Resolve simple storage paths to public URLs (synchronous helper using supabase.getPublicUrl)
 const resolveStorageUrlSync = (value: any) => {
   if (!value) return null;
   if (typeof value === 'object' && value.uri) return value.uri;
@@ -27,7 +26,6 @@ const resolveStorageUrlSync = (value: any) => {
     const bucketsToTry: string[] = [];
     if (path.includes('/products/') || path.startsWith('products/')) bucketsToTry.push('products');
     if (path.includes('/covers/') || path.startsWith('covers/')) bucketsToTry.push('covers');
-    // Ensure defaults
     bucketsToTry.push('covers', 'products');
 
     const buckets = Array.from(new Set(bucketsToTry));
@@ -39,7 +37,6 @@ const resolveStorageUrlSync = (value: any) => {
         // continue
       }
     }
-
     return path;
   }
   return null;
@@ -78,7 +75,6 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
               <Text style={styles.soldOutText}>SOLD OUT</Text>
             </View>
           )}
-
         </View>
       </TouchableOpacity>
 
@@ -98,6 +94,7 @@ const ProductCard = ({ item, onAdd, onPress }: { item: any, onAdd: (p: any) => v
             onPress={handleAdd}
             style={[styles.addToCartSmallBtn, { opacity: item.stock === 0 ? 0.4 : 1 }]}
             disabled={item.stock === 0}
+            activeOpacity={0.8}
           >
             <Ionicons name={item.stock === 0 ? "close" : "add"} size={18} color="#FFF" />
           </TouchableOpacity>
@@ -147,7 +144,6 @@ export default function VendorDetails() {
     ]);
 
     if (!merchantResponse.error && merchantResponse.data) {
-      // Normalize cover_image to a usable public URL if needed
       const mp = { ...merchantResponse.data };
       try {
         if (mp?.cover_image && typeof mp.cover_image === 'string' && !mp.cover_image.startsWith('http')) {
@@ -185,7 +181,6 @@ export default function VendorDetails() {
     }, [params.id, fetchVendorProducts, fetchMerchantProfile])
   );
 
-  // Keep a derived header image state that prefers merchantProfile.cover_image
   useEffect(() => {
     const preferred = merchantProfile?.cover_image || params.coverImage || params.image || null;
     try {
@@ -245,10 +240,6 @@ export default function VendorDetails() {
     meetupPoint,
     meetupDetails,
   }), [displayName, displayDesc, displayLoc, phoneNumber, meetupPoint, meetupDetails]);
-
-  const distance = params.distance || '1.2 km';
-  const time = params.time || '15-20 mins';
-  const rating = params.rating || '4.8';
 
   const groupedProducts = useMemo(() => {
     const vendorProducts = allProducts.filter((p: any) => {
@@ -322,13 +313,15 @@ export default function VendorDetails() {
                 style={styles.headerImage}
                 onError={() => {
                   setToastMsg('Cover image failed to load');
-                  // fallback to default background
                   setHeaderImage(require('../../assets/images/cstbg.jpg'));
                 }}
               />
-              <View style={styles.imageOverlay} />
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <Feather name="arrow-left" size={22} color={COLORS.secondary} />
+              <LinearGradient
+                colors={['rgba(69,26,3,0.4)', 'transparent', 'rgba(0,0,0,0.6)']}
+                style={styles.imageOverlay}
+              />
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+                <Feather name="arrow-left" size={22} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
@@ -337,15 +330,13 @@ export default function VendorDetails() {
                 <Text style={styles.vendorName}>{profileSummary.name}</Text>
                 <TouchableOpacity
                   style={[styles.favBtn, isFav && styles.favBtnActive]}
+                  activeOpacity={0.8}
                   onPress={async () => {
                     const newVal = !isFav;
-                    // optimistic UI
                     setIsFav(newVal);
                     try {
-                      // update local context
                       updateProfile({ favorite: newVal });
 
-                      // try persist to DB if vendor id available
                       if (params.id) {
                         const { error } = await supabase
                           .from('vendors')
@@ -353,7 +344,6 @@ export default function VendorDetails() {
                           .eq('id', params.id);
                           if (error) {
                             console.error('Failed to persist favorite:', error);
-                            // rollback
                             setIsFav(!newVal);
                             updateProfile({ favorite: !newVal });
                             setToastMsg('Unable to save favorite. Please try again.');
@@ -367,35 +357,35 @@ export default function VendorDetails() {
                     }
                   }}
                 >
-                  <Feather name="heart" size={20} color={isFav ? '#E74C3C' : '#999'} />
+                  <Feather name="heart" size={20} color={isFav ? '#EF4444' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
               <Text style={styles.description}>{profileSummary.description}</Text>
 
               <View style={styles.locationDetail}>
-                <Ionicons name="location-outline" size={14} color="#888" />
+                <Ionicons name="location-outline" size={14} color="#64748B" />
                 <Text style={styles.locationText}>{profileSummary.location}</Text>
               </View>
 
               <View style={styles.contactCard}>
                 <View style={styles.contactRow}>
                   <View style={styles.contactLabelRow}>
-                    <Ionicons name="call" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <Ionicons name="call" size={16} color="#C2410C" style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Phone</Text>
                   </View>
                   <Text style={styles.contactValue}>{profileSummary.phone}</Text>
                 </View>
                 <View style={styles.contactRow}>
                   <View style={styles.contactLabelRow}>
-                    <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <MaterialCommunityIcons name="map-marker-outline" size={16} color="#C2410C" style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Meet-up</Text>
                   </View>
                   <Text style={styles.contactValue}>{profileSummary.meetupPoint}</Text>
                 </View>
                 <View style={styles.contactRow}>
                   <View style={styles.contactLabelRow}>
-                    <Feather name="map-pin" size={16} color={COLORS.primary} style={styles.contactIcon} />
+                    <Feather name="map-pin" size={16} color="#C2410C" style={styles.contactIcon} />
                     <Text style={styles.contactLabel}>Details</Text>
                   </View>
                   <Text style={styles.contactValue}>{profileSummary.meetupDetails}</Text>
@@ -404,6 +394,7 @@ export default function VendorDetails() {
                   {(vendorProfile?.mobile || params.mobile) && (
                     <TouchableOpacity
                       style={styles.contactActionBtn}
+                      activeOpacity={0.8}
                       onPress={() => Linking.openURL(`tel:${phoneNumber}`)}
                     >
                       <Feather name="phone-call" size={14} color="#FFF" />
@@ -413,6 +404,7 @@ export default function VendorDetails() {
 
                   <TouchableOpacity
                     style={[styles.contactActionBtn, styles.messageActionBtn]}
+                    activeOpacity={0.8}
                     onPress={() => setShowChat(true)}
                   >
                     <Feather name="message-circle" size={14} color="#FFF" />
@@ -426,7 +418,7 @@ export default function VendorDetails() {
         renderSectionHeader={({ section: { title, icon } }) => (
           <View style={styles.sectionHeader}>
             <View style={styles.sectionLabelRow}>
-              <MaterialCommunityIcons name={icon as any} size={20} color={COLORS.primary} />
+              <MaterialCommunityIcons name={icon as any} size={20} color="#C2410C" />
               <Text style={styles.sectionTitle}>{title}</Text>
             </View>
             <View style={styles.accentLine} />
@@ -456,8 +448,8 @@ export default function VendorDetails() {
                   source={typeof selectedProduct.img === 'number' ? selectedProduct.img : { uri: selectedProduct.img?.uri || selectedProduct.img }} 
                   style={styles.modalImg} 
                 />
-                <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedProduct(null)}>
-                  <Ionicons name="close" size={24} color="#FFF" />
+                <TouchableOpacity style={styles.closeBtn} activeOpacity={0.8} onPress={() => setSelectedProduct(null)}>
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
 
                 <View style={styles.modalBody}>
@@ -468,17 +460,18 @@ export default function VendorDetails() {
                   <Text style={styles.modalDescTitle}>Description</Text>
                   <Text style={styles.modalDescText}>{selectedProduct.desc || "A must-try dish in Toledo!"}</Text>
 
-                  <TouchableOpacity 
-                    style={[styles.addBtnLarge, { opacity: selectedProduct.stock === 0 ? 0.5 : 1 }]}
-                    onPress={() => {
-                      handleAddItem(selectedProduct);
-                      setSelectedProduct(null);
-                    }}
-                    disabled={selectedProduct.stock === 0}
-                  >
-                    <Text style={styles.addBtnLargeText}>
-                      {selectedProduct.stock === 0 ? "Currently Unavailable" : "Add to Cart"}
-                    </Text>
+                  <TouchableOpacity activeOpacity={0.8} style={{ width: '100%' }} onPress={() => {
+                    handleAddItem(selectedProduct);
+                    setSelectedProduct(null);
+                  }} disabled={selectedProduct.stock === 0}>
+                    <LinearGradient
+                      colors={['#C2410C', '#9A3412']}
+                      style={[styles.addBtnLarge, { opacity: selectedProduct.stock === 0 ? 0.5 : 1 }]}
+                    >
+                      <Text style={styles.addBtnLargeText}>
+                        {selectedProduct.stock === 0 ? "Currently Unavailable" : "Add to Cart"}
+                      </Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                 </View>
               </>
@@ -492,8 +485,8 @@ export default function VendorDetails() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatContainer}>
             <View style={styles.chatHeader}>
               <Text style={styles.chatTitle}>{displayName}</Text>
-              <TouchableOpacity onPress={() => setShowChat(false)}>
-                <Ionicons name="close" size={22} color="#444" />
+              <TouchableOpacity onPress={() => setShowChat(false)} activeOpacity={0.8} style={styles.chatCloseBtn}>
+                <Ionicons name="close" size={20} color="#1E293B" />
               </TouchableOpacity>
             </View>
 
@@ -502,7 +495,7 @@ export default function VendorDetails() {
                 <Text style={styles.chatEmpty}>No messages yet. Start the conversation.</Text>
               ) : chatMessages.map((m, idx) => (
                 <View key={m.id || idx} style={[styles.chatBubble, m.sender_id === user?.id ? styles.chatBubbleUser : styles.chatBubbleVendor]}>
-                  <Text style={styles.chatBubbleText}>{m.content}</Text>
+                  <Text style={[styles.chatBubbleText, m.sender_id === user?.id && styles.chatBubbleTextUser]}>{m.content}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -512,13 +505,16 @@ export default function VendorDetails() {
                 value={chatInput}
                 onChangeText={setChatInput}
                 placeholder="Type a message..."
+                placeholderTextColor="#94A3B8"
                 style={styles.chatTextInput}
               />
-              <TouchableOpacity
-                style={styles.sendBtn}
-                onPress={handleSendMessage}
-              >
-                <Text style={styles.sendBtnText}>Send</Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={handleSendMessage}>
+                <LinearGradient
+                  colors={['#C2410C', '#9A3412']}
+                  style={styles.sendBtn}
+                >
+                  <Text style={styles.sendBtnText}>Send</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -537,83 +533,213 @@ export default function VendorDetails() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  headerImageWrapper: { height: 240, width: '100%' },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  headerImageWrapper: { height: 260, width: '100%' },
   headerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  imageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.1)' },
-  backBtn: { position: 'absolute', top: 50, left: 20, backgroundColor: '#FFF', padding: 10, borderRadius: 15, elevation: 5 },
-  infoBox: { paddingHorizontal: 25, paddingTop: 30, paddingBottom: 25, backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, marginTop: -40, elevation: 10 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  imageOverlay: { ...StyleSheet.absoluteFillObject },
+  backBtn: { 
+    position: 'absolute', 
+    top: Platform.OS === 'android' ? 40 : 50, 
+    left: 20, 
+    backgroundColor: 'rgba(0,0,0,0.4)', 
+    padding: 8, 
+    borderRadius: 14, 
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  infoBox: { 
+    paddingHorizontal: 20, 
+    paddingTop: 28, 
+    paddingBottom: 24, 
+    backgroundColor: '#FFFFFF', 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    marginTop: -32, 
+    elevation: 8,
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
   titleRowMinimal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  vendorName: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
-  favBtn: { backgroundColor: '#F8F8F8', padding: 12, borderRadius: 50 },
-  favBtnActive: { backgroundColor: '#FFF0F0' },
-  description: { fontSize: 13, color: '#666', marginTop: 10, lineHeight: 20 },
-  statsRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
-  statTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F6F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
-  statText: { fontWeight: '800', color: COLORS.secondary, fontSize: 12 },
-  locationDetail: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 15, gap: 5, paddingLeft: 2, flexWrap: 'wrap' },
-  locationText: { flex: 1, fontSize: 12, color: '#888', fontWeight: '600', flexWrap: 'wrap' },
-  sectionHeader: { paddingHorizontal: 25, marginTop: 35, marginBottom: 15 },
-  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
-  accentLine: { width: 40, height: 4, backgroundColor: COLORS.primary, marginTop: 5, borderRadius: 2 },
-  gridRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 20 },
-  popularCard: { width: CARD_WIDTH, backgroundColor: '#FFF', borderRadius: 24, elevation: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-  imageContainer: { width: '100%', height: 120 },
-  popularItemImg: { width: '100%', height: '100%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  soldOutOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  soldOutText: { color: COLORS.primary, fontWeight: '900', fontSize: 12 },
-  stockTag: { position: 'absolute', bottom: 10, left: 10, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  stockTagText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
+  vendorName: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  favBtn: { 
+    backgroundColor: '#F8FAFC', 
+    padding: 10, 
+    borderRadius: 50,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  favBtnActive: { backgroundColor: '#FEF2F2', borderColor: '#FEE2E2' },
+  description: { fontSize: 14, color: '#64748B', marginTop: 8, lineHeight: 20, fontWeight: '600' },
+  locationDetail: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 },
+  locationText: { fontSize: 13, color: '#64748B', fontWeight: '700' },
+  
+  sectionHeader: { paddingHorizontal: 20, marginTop: 32, marginBottom: 16 },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  accentLine: { width: 36, height: 4, backgroundColor: '#C2410C', marginTop: 6, borderRadius: 2 },
+  
+  gridRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 16 },
+  
+  popularCard: { 
+    width: CARD_WIDTH, 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 24, 
+    elevation: 4, 
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.08, 
+    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    overflow: 'hidden'
+  },
+  imageContainer: { width: '100%', height: 130 },
+  popularItemImg: { width: '100%', height: '100%' },
+  soldOutOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },
+  soldOutText: { color: '#C2410C', fontWeight: '900', fontSize: 12 },
+  
   popularCardContent: { padding: 12 },
-  promoBadgeInline: { alignSelf: 'flex-start', backgroundColor: '#FFF0F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 8 },
-  promoBadgeText: { color: COLORS.primary, fontSize: 10, fontWeight: '900' },
-  popularItemName: { fontSize: 15, fontWeight: '800', color: COLORS.secondary },
-  popularItemDesc: { fontSize: 10, color: '#AAA', marginTop: 3, marginBottom: 10 },
+  promoBadgeInline: { alignSelf: 'flex-start', backgroundColor: '#FFEDD5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 6 },
+  promoBadgeText: { color: '#C2410C', fontSize: 10, fontWeight: '900' },
+  popularItemName: { fontSize: 15, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  popularItemDesc: { fontSize: 11, color: '#64748B', marginTop: 2, marginBottom: 10, fontWeight: '600' },
+  
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  popularItemPrice: { fontSize: 17, fontWeight: '900', color: COLORS.primary },
-  addToCartSmallBtn: { backgroundColor: COLORS.secondary, width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, height: height * 0.78, overflow: 'hidden' },
-  modalImg: { width: '100%', height: 320 },
-  closeBtn: { position: 'absolute', top: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 25 },
-  modalBody: { padding: 30, flex: 1 },
+  popularItemPrice: { fontSize: 16, fontWeight: '900', color: '#C2410C' },
+  addToCartSmallBtn: { 
+    backgroundColor: '#C2410C', 
+    width: 32, 
+    height: 32, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { 
+    backgroundColor: '#FFFFFF', 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    height: height * 0.78, 
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  modalImg: { width: '100%', height: 300 },
+  closeBtn: { 
+    position: 'absolute', 
+    top: 20, 
+    right: 20, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    padding: 8, 
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  modalBody: { padding: 24, flex: 1, justifyContent: 'space-between' },
   modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalName: { fontSize: 26, fontWeight: '900', color: COLORS.secondary },
-  modalPriceText: { fontSize: 24, fontWeight: '900', color: COLORS.primary },
-  modalDescTitle: { fontSize: 17, fontWeight: '800', color: COLORS.secondary, marginTop: 25 },
-  modalDescText: { fontSize: 15, color: '#666', marginTop: 12, lineHeight: 24 },
-  addBtnLarge: { backgroundColor: COLORS.primary, padding: 22, borderRadius: 22, alignItems: 'center', marginTop: 'auto', marginBottom: 15 },
-  addBtnLargeText: { color: '#FFF', fontSize: 18, fontWeight: '900' }
-  ,
-  contactCard: { marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#EEE' },
-  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  modalName: { fontSize: 24, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3, flex: 1, marginRight: 10 },
+  modalPriceText: { fontSize: 24, fontWeight: '900', color: '#C2410C' },
+  modalDescTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B', marginTop: 16 },
+  modalDescText: { fontSize: 14, color: '#64748B', marginTop: 8, lineHeight: 22, fontWeight: '600' },
+  
+  addBtnLarge: { 
+    paddingVertical: 16, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    marginTop: 20,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  addBtnLargeText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  
+  contactCard: { marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   contactLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  contactIcon: { marginRight: 8 },
-  contactLabel: { fontSize: 12, fontWeight: '800', color: COLORS.secondary },
-  contactValue: { flex: 1, textAlign: 'right', fontSize: 13, color: '#666', fontWeight: '600', lineHeight: 20 },
-  contactActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  contactActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14 },
-  messageActionBtn: { backgroundColor: COLORS.secondary },
-  contactActionText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  chatContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '70%' },
-  chatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderColor: '#F2F2F2' },
-  chatTitle: { fontSize: 16, fontWeight: '800', color: '#222' },
-  chatBody: { padding: 14, paddingBottom: 0 },
-  chatBubble: { padding: 10, borderRadius: 12, marginBottom: 8, maxWidth: '80%' },
-  chatBubbleVendor: { backgroundColor: '#F4F6F8', alignSelf: 'flex-start' },
-  chatBubbleUser: { backgroundColor: COLORS.primary, alignSelf: 'flex-end' },
-  chatBubbleText: { color: '#111' },
-  chatEmpty: { color: '#666', fontSize: 13, textAlign: 'center', paddingVertical: 10 },
-  chatInputRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderTopWidth: 1, borderColor: '#F2F2F2' },
-  chatTextInput: { flex: 1, backgroundColor: '#FAFAFA', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8 },
-  sendBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
-  sendBtnText: { color: '#FFF', fontWeight: '800' },
-  msgBtnText: { color: COLORS.primary, fontWeight: '700' }
-  ,
+  contactIcon: { marginRight: 4 },
+  contactLabel: { fontSize: 12, fontWeight: '800', color: '#64748B' },
+  contactValue: { flex: 1, textAlign: 'right', fontSize: 13, color: '#1E293B', fontWeight: '700' },
+  
+  contactActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  contactActionBtn: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 6, 
+    backgroundColor: '#C2410C', 
+    paddingVertical: 12, 
+    borderRadius: 14,
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  messageActionBtn: { backgroundColor: '#7C2D12' },
+  contactActionText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  
+  chatOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  chatContainer: { 
+    backgroundColor: '#FFFFFF', 
+    borderTopLeftRadius: 28, 
+    borderTopRightRadius: 28, 
+    maxHeight: '75%',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 10
+  },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18, borderBottomWidth: 1, borderColor: '#F1F5F9' },
+  chatTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  chatCloseBtn: { padding: 4, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  
+  chatBody: { padding: 16, paddingBottom: 20 },
+  chatBubble: { padding: 12, borderRadius: 16, marginBottom: 10, maxWidth: '80%' },
+  chatBubbleVendor: { backgroundColor: '#F1F5F9', alignSelf: 'flex-start' },
+  chatBubbleUser: { backgroundColor: '#C2410C', alignSelf: 'flex-end' },
+  chatBubbleText: { color: '#1E293B', fontSize: 14, fontWeight: '600' },
+  chatBubbleTextUser: { color: '#FFFFFF' },
+  chatEmpty: { color: '#64748B', fontSize: 13, textAlign: 'center', paddingVertical: 20, fontWeight: '600' },
+  
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', padding: 16, borderTopWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#FFFFFF' },
+  chatTextInput: { 
+    flex: 1, 
+    backgroundColor: '#F8FAFC', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    borderRadius: 16, 
+    marginRight: 10, 
+    fontSize: 14, 
+    color: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    fontWeight: '600'
+  },
+  sendBtn: { 
+    paddingHorizontal: 18, 
+    paddingVertical: 12, 
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  sendBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  
   toastContainer: { position: 'absolute', top: 50, left: 20, right: 20, alignItems: 'center', zIndex: 9999 },
-  toastBubble: { backgroundColor: '#111', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, opacity: 0.95 },
-  toastText: { color: '#FFF', fontWeight: '700' }
+  toastBubble: { backgroundColor: '#1E293B', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
+  toastText: { color: '#FFF', fontWeight: '800', fontSize: 13 }
 });

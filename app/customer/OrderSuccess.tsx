@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator, Animated, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import QRCode from 'react-native-qrcode-svg';
-import { COLORS } from '../../styles/globalStyles';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { useCart } from '../../context/CartContext';
@@ -26,32 +26,26 @@ export default function OrderSuccess() {
     const fetchOrder = async () => {
       if (!checkoutId) { setLoading(false); return; }
       
-      // 1. Fetch Order (use maybeSingle to avoid exception when no row)
       const { data: orderData, error: fetchError } = await supabase.from('orders').select('*').eq('id', checkoutId).maybeSingle();
 
       if (orderData) {
         setOrder(orderData);
       } else {
-        // If DB fetch failed or returns nothing, try local orders from context (fallback)
         if (fetchError) console.warn('Order fetch error:', fetchError);
         const local = orders.find((o: any) => String(o.id) === String(checkoutId));
         if (local) {
           setOrder(local);
         } else {
-          // As a last resort, show a minimal order placeholder so QR still appears
           setOrder({ id: checkoutId, total: 0, pickup_point_id: null, paymentMethod: paymentMethod });
         }
       }
 
-      // 2. Fetch Pickup Point Name if ID exists (use order state after it is set)
-      // We will derive pickupName below after order is set
       setLoading(false);
     };
     fetchOrder();
   }, [checkoutId, routePaymentMethod]);
 
   useEffect(() => {
-    // run entrance animation when order is available
     if (!loading) {
       Animated.timing(anim, {
         toValue: 1,
@@ -61,14 +55,12 @@ export default function OrderSuccess() {
     }
   }, [loading]);
 
-  // Derive pickup name whenever order or orders list changes
   const { orders } = useCart();
   useEffect(() => {
     const derivePickup = async () => {
       if (!order) return setPickupName('No specific location');
       if (!order.pickup_point_id) return setPickupName('No specific location');
 
-      // Try to resolve pickup_point_id as a pickup_points.id first
       try {
         const { data: pointData } = await supabase
           .from('pickup_points')
@@ -81,27 +73,40 @@ export default function OrderSuccess() {
           return;
         }
       } catch (e) {
-        // ignore and fall back
+        // ignore
       }
 
-      // Fallback: if pickup_point_id is a textual landmark set by seller, show it directly
       setPickupName(String(order.pickup_point_id));
     };
     derivePickup();
   }, [order, orders]);
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.secondary} /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#C2410C" /></View>;
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        <View style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor="#451A03" />
+
+      {/* Styled Header matching HomeScreen Warm Gradient Theme */}
+      <LinearGradient
+        colors={['#451A03', '#7C2D12', '#C2410C']}
+        style={styles.gradientHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <TouchableOpacity onPress={() => router.replace('/customer/home')} style={styles.headerLeftAction} activeOpacity={0.8}>
+          <Feather name="arrow-left" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitleText}>Order Success</Text>
+        <View style={styles.headerRightSpacer} />
+      </LinearGradient>
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.confirmationHeader}>
           <View style={styles.iconContainer}>
-            <Feather name="check" size={28} color={COLORS.primary} />
+            <Feather name="check" size={28} color="#C2410C" />
           </View>
-          <Text style={styles.title}>Order Confirmed</Text>
+          <Text style={styles.title}>Order Placed Successfully!</Text>
           <Text style={styles.subtitle}>Present the QR code below to the vendor at the pick-up point.</Text>
         </View>
 
@@ -110,12 +115,11 @@ export default function OrderSuccess() {
             opacity: anim,
             transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
           }]}> 
-            {/* WRAPPED QR FOR VISIBILITY */}
             <View style={styles.qrWrapper}>
               <QRCode 
                 value={String(order.id)} 
                 size={180} 
-                color="#000"
+                color="#1E293B"
                 backgroundColor="#FFF"
               />
             </View>
@@ -137,16 +141,23 @@ export default function OrderSuccess() {
                 <Text style={styles.value}>₱{Number(order.total || 0).toFixed(2)}</Text>
               </View>
             </View>
+
             {paymentMethod === 'GCash' && (
               <View style={styles.noticeBox}>
                 <Text style={styles.noticeTitle}>Next Step</Text>
                 <Text style={styles.noticeText}>Send your GCash payment screenshot to the vendor through the chat, then wait for acknowledgement before pickup.</Text>
               </View>
             )}
+
             {paymentMethod === 'GCash' && order?.vendor_id && (
-              <TouchableOpacity style={styles.messageBtn} onPress={() => router.push({ pathname: '/customer/VendorDetails', params: { id: String(order.vendor_id) } })}>
-                <Feather name="message-circle" size={16} color="#FFF" />
-                <Text style={styles.messageBtnText}>Message Vendor</Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => router.push({ pathname: '/customer/VendorDetails', params: { id: String(order.vendor_id) } })}>
+                <LinearGradient
+                  colors={['#C2410C', '#9A3412']}
+                  style={styles.messageBtn}
+                >
+                  <Feather name="message-circle" size={16} color="#FFF" />
+                  <Text style={styles.messageBtnText}>Message Vendor</Text>
+                </LinearGradient>
               </TouchableOpacity>
             )}
           </Animated.View>
@@ -154,8 +165,13 @@ export default function OrderSuccess() {
           <Text style={styles.emptyText}>Order details not found.</Text>
         )}
 
-        <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/customer/home')}>
-          <Text style={styles.homeBtnText}>Back to Home</Text>
+        <TouchableOpacity activeOpacity={0.8} onPress={() => router.replace('/customer/home')} style={styles.homeBtnWrapper}>
+          <LinearGradient
+            colors={['#C2410C', '#9A3412']}
+            style={styles.homeBtn}
+          >
+            <Text style={styles.homeBtnText}>Back to Home</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -163,29 +179,126 @@ export default function OrderSuccess() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { padding: 30, alignItems: 'center', flexGrow: 1, justifyContent: 'center' },
-  header: { alignItems: 'center', marginBottom: 30 },
-  iconContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#F0F9F0', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.secondary, marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#999', textAlign: 'center', maxWidth: 250 },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
   
-  orderCard: { width: '100%', padding: 25, borderRadius: 25, backgroundColor: '#F8F9FA', alignItems: 'center' },
-  qrWrapper: { padding: 15, backgroundColor: '#FFF', borderRadius: 20, marginBottom: 10 },
-  refText: { fontSize: 12, fontWeight: '700', color: '#AAA', letterSpacing: 2, marginBottom: 20 },
+  gradientHeader: {
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  headerTitleText: { 
+    fontSize: 18, 
+    fontWeight: '900', 
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  headerLeftAction: { 
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  headerRightSpacer: {
+    width: 36,
+  },
+
+  scrollContent: { padding: 20, alignItems: 'center', flexGrow: 1, paddingBottom: 40 },
+  confirmationHeader: { alignItems: 'center', width: '100%', marginTop: 20, marginBottom: 24 },
+  iconContainer: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
+    backgroundColor: '#FFF7ED', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  title: { fontSize: 22, fontWeight: '900', color: '#1E293B', marginBottom: 8, letterSpacing: -0.3 },
+  subtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', maxWidth: 280, fontWeight: '600' },
   
-  infoSection: { width: '100%', borderTopWidth: 1, borderColor: '#EEE', paddingTop: 20 },
+  orderCard: { 
+    width: '100%', 
+    padding: 24, 
+    borderRadius: 28, 
+    backgroundColor: '#FFFFFF', 
+    alignItems: 'center',
+    elevation: 12,
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  qrWrapper: { 
+    padding: 16, 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 20, 
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+  },
+  refText: { fontSize: 12, fontWeight: '800', color: '#64748B', letterSpacing: 2, marginBottom: 20 },
+  
+  infoSection: { width: '100%', borderTopWidth: 1, borderColor: '#F1F5F9', paddingTop: 20 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  label: { fontSize: 14, color: '#999' },
-  value: { fontSize: 14, fontWeight: '700', color: COLORS.secondary },
-  noticeBox: { width: '100%', backgroundColor: '#FFF4E5', borderRadius: 18, padding: 16, marginTop: 18, borderWidth: 1, borderColor: '#F5D6A0' },
-  noticeTitle: { fontSize: 15, fontWeight: '700', color: '#B45309', marginBottom: 8 },
-  noticeText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
-  messageBtn: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 28 },
-  messageBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  label: { fontSize: 14, color: '#64748B', fontWeight: '600' },
+  value: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
   
-  homeBtn: { marginTop: 30, paddingVertical: 15, paddingHorizontal: 40, borderRadius: 50, backgroundColor: COLORS.secondary },
-  homeBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
-  emptyText: { color: '#999' }
+  noticeBox: { 
+    width: '100%', 
+    backgroundColor: '#FFF7ED', 
+    borderRadius: 18, 
+    padding: 16, 
+    marginTop: 18, 
+    borderWidth: 1, 
+    borderColor: '#FFEDD5' 
+  },
+  noticeTitle: { fontSize: 15, fontWeight: '800', color: '#C2410C', marginBottom: 6 },
+  noticeText: { fontSize: 13, color: '#9A3412', lineHeight: 20, fontWeight: '600' },
+  
+  messageBtn: { 
+    marginTop: 18, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 8, 
+    paddingVertical: 14, 
+    paddingHorizontal: 28, 
+    borderRadius: 18,
+    width: '100%',
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  messageBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  
+  homeBtnWrapper: { width: '100%', marginTop: 24 },
+  homeBtn: { 
+    paddingVertical: 16, 
+    borderRadius: 18, 
+    alignItems: 'center',
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  homeBtnText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+  emptyText: { color: '#64748B', fontWeight: '700' }
 });

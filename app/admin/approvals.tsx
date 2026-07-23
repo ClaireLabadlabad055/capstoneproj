@@ -7,13 +7,12 @@ import {
   FlatList, 
   SafeAreaView, 
   StatusBar, 
-  Platform,
   Alert,
 } from 'react-native';
 import storage from '../../lib/storage';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { COLORS, SHADOWS } from '../../styles/globalStyles';
+import GradientHeader from '../_components/GradientHeader';
 import { supabase } from '../../lib/supabaseClient';
 
 const isMissingColumnError = (error: any) => {
@@ -173,28 +172,28 @@ export default function AdminApprovals() {
 
   const ApprovalCard = ({ item, onAction }: { item: any; onAction: any }) => {
     return (
-      <View style={[styles.approvalCard, SHADOWS?.small]}>
+      <View style={styles.approvalCard}>
           <View style={styles.cardHeader}>
             <View style={[styles.storeIcon, item.type === 'customer' && styles.customerIcon]}>
-              <MaterialCommunityIcons name={item.type === 'merchant' ? 'store-plus' : 'account-circle'} size={24} color={COLORS.primary} />
+              <MaterialCommunityIcons name={item.type === 'merchant' ? 'store-plus' : 'account-circle'} size={22} color="#C2410C" />
             </View>
             <View style={styles.headerInfo}>
-              <Text style={styles.storeName}>{item.name}</Text>
-              <Text style={styles.ownerText}>Owner: {item.owner}</Text>
+              <Text style={styles.storeName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.ownerText} numberOfLines={1}>Owner: {item.owner}</Text>
             </View>
           </View>
 
           <View style={styles.detailsBox}>
             <View style={styles.detailRow}>
-              <Feather name="tag" size={14} color="#64748B" />
+              <Feather name="tag" size={13} color="#94A3B8" />
               <Text style={styles.detailText}>{item.category}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Feather name="calendar" size={14} color="#64748B" />
+              <Feather name="calendar" size={13} color="#94A3B8" />
               <Text style={styles.detailText}>Applied on {item.appliedDate}</Text>
             </View>
-            <TouchableOpacity style={styles.docBtn}>
-              <Feather name="file-text" size={14} color={COLORS.primary} />
+            <TouchableOpacity style={styles.docBtn} activeOpacity={0.7}>
+              <Feather name="file-text" size={13} color="#C2410C" />
               <Text style={styles.docText}>{item.type === 'merchant' ? 'View Business Permit' : 'View ID Document'}</Text>
             </TouchableOpacity>
           </View>
@@ -203,16 +202,18 @@ export default function AdminApprovals() {
             <TouchableOpacity 
               style={[styles.btn, styles.rejectBtn]} 
               onPress={() => onAction(item.id, item.name, item.type, 'Reject')}
+              activeOpacity={0.8}
             >
-              <Feather name="x" size={18} color="#EF4444" />
+              <Feather name="x" size={16} color="#EF4444" />
               <Text style={styles.rejectBtnText}>Reject</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={[styles.btn, styles.approveBtn]} 
               onPress={() => onAction(item.id, item.name, item.type, 'Approve')}
+              activeOpacity={0.8}
             >
-              <Feather name="check" size={18} color="#FFF" />
+              <Feather name="check" size={16} color="#FFF" />
               <Text style={styles.approveBtnText}>Approve</Text>
             </TouchableOpacity>
           </View>
@@ -226,28 +227,37 @@ export default function AdminApprovals() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" backgroundColor="#C2410C" />
       
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={24} color="#1E293B" />
-        </TouchableOpacity>
+      <GradientHeader
+        colors={['#C2410C', '#9A3412', '#7C2D12']}
+        titleContainerStyle={{ alignItems: 'flex-start', justifyContent: 'center' }}
+        leftAction={
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+            <Feather name="arrow-left" size={20} color="#C2410C" />
+          </TouchableOpacity>
+        }
+        rightAction={
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{selectedTab === 'merchant' ? merchantApplications.length : customerApplications.length}</Text>
+          </View>
+        }
+      >
         <Text style={styles.headerTitle}>Pending Approvals</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{selectedTab === 'merchant' ? merchantApplications.length : customerApplications.length}</Text>
-        </View>
-      </View>
+      </GradientHeader>
 
       <View style={styles.tabRow}>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'merchant' && styles.activeTabButton]}
           onPress={() => setSelectedTab('merchant')}
+          activeOpacity={0.8}
         >
           <Text style={[styles.tabText, selectedTab === 'merchant' && styles.activeTabText]}>Merchant Approvals</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, selectedTab === 'customer' && styles.activeTabButton]}
           onPress={() => setSelectedTab('customer')}
+          activeOpacity={0.8}
         >
           <Text style={[styles.tabText, selectedTab === 'customer' && styles.activeTabText]}>Customer Approvals</Text>
         </TouchableOpacity>
@@ -258,10 +268,11 @@ export default function AdminApprovals() {
         keyExtractor={(item) => item.id}
         renderItem={renderApprovalCard}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.checkCircle}>
-              <Feather name="check" size={40} color="#10B981" />
+              <Feather name="check" size={36} color="#15803D" />
             </View>
             <Text style={styles.emptyTitle}>All Caught Up!</Text>
             <Text style={styles.emptySub}>There are no pending approvals to review.</Text>
@@ -274,50 +285,51 @@ export default function AdminApprovals() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingVertical: 15,
-    backgroundColor: '#FFF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9'
+  backBtn: { backgroundColor: '#FFEDD5', padding: 8, borderRadius: 14, borderWidth: 1, borderColor: '#FED7AA', marginRight: 10 },
+  headerTitle: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
+  countBadge: { backgroundColor: '#FFEDD5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: '#FED7AA' },
+  countText: { fontSize: 12, fontWeight: '900', color: '#C2410C' },
+
+  listContent: { padding: 20, paddingBottom: 100 },
+  approvalCard: { 
+    backgroundColor: '#FFF', 
+    borderRadius: 20, 
+    padding: 18, 
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  backBtn: { padding: 8, marginRight: 10 },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', flex: 1 },
-  countBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  countText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
-
-  listContent: { padding: 20 },
-  approvalCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 20, marginBottom: 16 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  storeIcon: { width: 50, height: 50, borderRadius: 18, backgroundColor: '#F0F7FF', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  storeIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   headerInfo: { flex: 1 },
-  storeName: { fontSize: 17, fontWeight: '900', color: '#1E293B' },
-  ownerText: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 2 },
+  storeName: { fontSize: 16, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  ownerText: { fontSize: 12, color: '#64748B', fontWeight: '700', marginTop: 2 },
 
-  detailsBox: { backgroundColor: '#F8FAFC', borderRadius: 20, padding: 15, gap: 10, marginBottom: 20 },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  detailText: { fontSize: 13, color: '#475569', fontWeight: '600' },
-  docBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5, paddingVertical: 5 },
-  docText: { fontSize: 13, color: COLORS.primary, fontWeight: '800', textDecorationLine: 'underline' },
+  detailsBox: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 14, gap: 8, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  detailText: { fontSize: 12, color: '#475569', fontWeight: '700' },
+  docBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, paddingVertical: 2 },
+  docText: { fontSize: 12, color: '#C2410C', fontWeight: '900', textDecorationLine: 'underline' },
 
-  actionRow: { flexDirection: 'row', gap: 12 },
-  btn: { flex: 1, height: 50, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  btn: { flex: 1, height: 44, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   rejectBtn: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#FEE2E2' },
-  approveBtn: { backgroundColor: COLORS.secondary },
-  rejectBtnText: { color: '#EF4444', fontWeight: '800', fontSize: 14 },
-  approveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  approveBtn: { backgroundColor: '#C2410C' },
+  rejectBtnText: { color: '#EF4444', fontWeight: '900', fontSize: 13 },
+  approveBtnText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
 
-  emptyContainer: { alignItems: 'center', marginTop: 100, paddingHorizontal: 40 },
-  tabRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  tabButton: { flex: 1, paddingVertical: 12, borderRadius: 15, backgroundColor: '#F8FAFC', alignItems: 'center', marginHorizontal: 5 },
-  activeTabButton: { backgroundColor: COLORS.primary },
-  tabText: { fontSize: 14, fontWeight: '700', color: '#475569' },
+  emptyContainer: { alignItems: 'center', marginTop: 80, paddingHorizontal: 40 },
+  tabRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  tabButton: { flex: 1, paddingVertical: 10, borderRadius: 14, backgroundColor: '#F8FAFC', alignItems: 'center', marginHorizontal: 4, borderWidth: 1, borderColor: '#F1F5F9' },
+  activeTabButton: { backgroundColor: '#C2410C', borderColor: '#C2410C' },
+  tabText: { fontSize: 12, fontWeight: '800', color: '#64748B' },
   activeTabText: { color: '#FFFFFF' },
   customerIcon: { backgroundColor: '#FEF3C7' },
-  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
-  emptySub: { fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 8, lineHeight: 20 }
+  checkCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  emptySub: { fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 6, lineHeight: 18, fontWeight: '600' }
 });

@@ -11,12 +11,46 @@ import {
   Dimensions, 
   Platform 
 } from 'react-native'; 
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router'; 
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext'; 
+import { supabase } from '../../lib/supabaseClient';
 
 const { width } = Dimensions.get('window');
+
+const resolveStorageUrl = (value: any) => {
+  if (!value) return null;
+  if (typeof value === 'object' && value.uri) return value.uri;
+  if (typeof value === 'string') {
+    if (value.startsWith('http')) return value;
+
+    const path = value;
+    let bucket = 'covers';
+    if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
+    if (path.includes('/covers/') || path.startsWith('covers/')) bucket = 'covers';
+
+    try {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      if (data?.publicUrl) return data.publicUrl;
+    } catch (e) {
+      // ignore
+    }
+
+    for (const b of ['covers', 'products']) {
+      try {
+        const { data } = supabase.storage.from(b).getPublicUrl(path);
+        if (data?.publicUrl) return data.publicUrl;
+      } catch (e) {
+        // continue
+      }
+    }
+
+    return path;
+  }
+  return null;
+};
 
 export default function CartScreen() {
   const router = useRouter(); 
@@ -34,11 +68,16 @@ export default function CartScreen() {
     const item = props.item;
     // ✅ FIX: Ensure price is treated as a number
     const displayPrice = Number(item.price) || 0;
-    // Resolve image source for React Native <Image>
+    
+    // Resolve image source safely using robust storage resolution
     let imageSource: any = require('../../assets/images/octo.png');
     const maybeImage = item.image || item.img || item.image_url || null;
+    
     if (maybeImage) {
-      if (typeof maybeImage === 'string') {
+      const resolvedUrl = resolveStorageUrl(maybeImage);
+      if (resolvedUrl) {
+        imageSource = { uri: resolvedUrl };
+      } else if (typeof maybeImage === 'string') {
         imageSource = { uri: maybeImage };
       } else if (maybeImage.uri) {
         imageSource = maybeImage;
@@ -63,16 +102,16 @@ export default function CartScreen() {
 
         <View style={styles.actionColumn}>
           <TouchableOpacity onPress={() => removeFromCart(item.id, item.vendorName)} style={styles.deleteBtn}>
-            <Feather name="trash-2" size={18} color="#FF6B6B" />
+            <Feather name="trash-2" size={18} color="#EF4444" />
           </TouchableOpacity>
 
           <View style={styles.qtySelector}>
             <TouchableOpacity onPress={() => updateQty(item.id, -1, item.vendorName)}>
-              <Feather name="minus" size={14} color="#4A342E" />
+              <Feather name="minus" size={14} color="#1E293B" />
             </TouchableOpacity>
             <Text style={styles.qtyText}>{item.qty || 1}</Text>
             <TouchableOpacity onPress={() => updateQty(item.id, 1, item.vendorName)}>
-              <Feather name="plus" size={14} color="#4A342E" />
+              <Feather name="plus" size={14} color="#1E293B" />
             </TouchableOpacity>
           </View>
         </View>
@@ -82,16 +121,21 @@ export default function CartScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      <StatusBar barStyle="light-content" backgroundColor="#451A03" />
 
-      <View style={styles.whiteHeader}>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>My Cart</Text>
-        </View>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerLeftAction}>
-          <Feather name="arrow-left" size={24} color="#4A342E" />
+      {/* Styled Header matching HomeScreen Warm Gradient Theme */}
+      <LinearGradient
+        colors={['#451A03', '#7C2D12', '#C2410C']}
+        style={styles.gradientHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerLeftAction} activeOpacity={0.8}>
+          <Feather name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-      </View>
+        <Text style={styles.headerTitleText}>My Cart</Text>
+        <View style={styles.headerRightSpacer} />
+      </LinearGradient>
 
       <FlatList
         data={cartItems}
@@ -104,13 +148,18 @@ export default function CartScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="bag-handle-outline" size={80} color="#DDD" />
+            <Ionicons name="bag-handle-outline" size={80} color="#CBD5E1" />
             <Text style={styles.emptyText}>Your cart is empty</Text>
             <TouchableOpacity 
-              style={styles.browseBtn} 
+              activeOpacity={0.8}
               onPress={() => router.push('/customer/home')}
             >
-              <Text style={styles.browseBtnText}>Browse Delicacies</Text>
+              <LinearGradient
+                colors={['#C2410C', '#9A3412']}
+                style={styles.browseBtn}
+              >
+                <Text style={styles.browseBtnText}>Browse Delicacies</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         }
@@ -136,12 +185,17 @@ export default function CartScreen() {
           </View>
 
           <TouchableOpacity 
-            style={[styles.checkoutBtn, cartItems.length === 0 && styles.disabledBtn]}
+            activeOpacity={0.8}
             disabled={cartItems.length === 0}
             onPress={() => router.push('/customer/checkout')} 
           >
-            <Text style={styles.checkoutBtnText}>Checkout Now</Text>
-            <Feather name="arrow-right" size={18} color="#FFF" style={{ marginLeft: 10 }} />
+            <LinearGradient
+              colors={cartItems.length === 0 ? ['#E2E8F0', '#CBD5E1'] : ['#C2410C', '#9A3412']}
+              style={[styles.checkoutBtn, cartItems.length === 0 && styles.disabledBtn]}
+            >
+              <Text style={styles.checkoutBtnText}>Checkout Now</Text>
+              <Feather name="arrow-right" size={18} color="#FFF" style={{ marginLeft: 10 }} />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -149,46 +203,41 @@ export default function CartScreen() {
   );
 }
 
-// ... Keep your existing styles (they were correct!)
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FBFC' },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
   
-  // ✅ Identical to Profile Header Style
-  whiteHeader: {
-    height: 60,
-    backgroundColor: '#FFF',
+  gradientHeader: {
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderColor: '#F0F0F0',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     marginTop: Platform.OS === 'android' ? 20 : 0,
-    position: 'relative',
-  },
-  headerTitleContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   headerTitleText: { 
     fontSize: 18, 
-    fontWeight: '800', 
-    color: '#4A342E',
+    fontWeight: '900', 
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
   headerLeftAction: { 
-    padding: 8,
-    zIndex: 10,
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  headerRightSpacer: {
+    width: 36,
   },
 
   itemCountText: {
     fontSize: 13,
-    color: '#AAA',
-    fontWeight: '600',
+    color: '#64748B',
+    fontWeight: '700',
     marginBottom: 15,
     textAlign: 'center'
   },
@@ -201,77 +250,87 @@ const styles = StyleSheet.create({
   
   cartCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFF',
-    borderRadius: 22,
-    padding: 12,
-    marginBottom: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 14,
+    marginBottom: 16,
     alignItems: 'center',
-    elevation: 2,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    borderLeftWidth: 5,
+    borderLeftColor: '#C2410C',
   },
-  imageContainer: { backgroundColor: '#FAF9F6', borderRadius: 15, padding: 5 },
-  itemImage: { width: 65, height: 65, borderRadius: 10 },
+  imageContainer: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 4, borderWidth: 1, borderColor: '#E2E8F0' },
+  itemImage: { width: 65, height: 65, borderRadius: 12 },
   itemDetails: { flex: 1, marginLeft: 15 },
-  itemName: { fontSize: 16, fontWeight: '800', color: '#4A342E' },
-  vendorLabel: { fontSize: 11, color: '#BBB', fontWeight: '700', marginTop: 2 },
-  itemPrice: { fontSize: 16, color: '#8D493A', fontWeight: '900', marginTop: 4 },
+  itemName: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  vendorLabel: { fontSize: 11, color: '#C2410C', fontWeight: '700', marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
+  itemPrice: { fontSize: 16, color: '#C2410C', fontWeight: '900', marginTop: 4 },
   
   actionColumn: { alignItems: 'flex-end', justifyContent: 'space-between', height: 75 },
   deleteBtn: { padding: 4 },
   qtySelector: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#FAF9F6', 
-    borderRadius: 10, 
-    padding: 6,
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 14, 
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#F0EBE3'
+    borderColor: '#E2E8F0'
   },
-  qtyText: { marginHorizontal: 12, fontWeight: '900', color: '#4A342E' },
+  qtyText: { marginHorizontal: 10, fontWeight: '900', color: '#1E293B', fontSize: 13 },
 
   summaryWrapper: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 30,
     left: 0,
     right: 0,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 30, // Adjusted to sit better on screen
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
     backgroundColor: 'transparent',
   },
   summaryCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 20,
-    borderRadius: 25,
+    borderRadius: 28,
     padding: 22,
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 15,
+    elevation: 12,
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: '#F1F5F9',
   },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  summaryLabel: { color: '#888', fontWeight: '600', fontSize: 14 },
-  summaryValue: { fontWeight: '700', color: '#4A342E', fontSize: 14 },
-  divider: { height: 1, backgroundColor: '#F5F5F5', marginVertical: 12 },
+  summaryLabel: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+  summaryValue: { fontWeight: '700', color: '#1E293B', fontSize: 14 },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
-  totalLabel: { fontSize: 18, fontWeight: '900', color: '#4A342E' },
-  totalValue: { fontSize: 24, fontWeight: '900', color: '#8D493A' },
+  totalLabel: { fontSize: 18, fontWeight: '900', color: '#1E293B' },
+  totalValue: { fontSize: 24, fontWeight: '900', color: '#C2410C' },
 
   checkoutBtn: {
-    backgroundColor: '#4A342E',
     paddingVertical: 16,
     borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  disabledBtn: { backgroundColor: '#E0E0E0' },
+  disabledBtn: { shadowOpacity: 0, elevation: 0 },
   checkoutBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
   
   emptyContainer: { alignItems: 'center', marginTop: 100 },
-  emptyText: { color: '#CCC', marginTop: 10, fontWeight: '700', fontSize: 16 },
-  browseBtn: { backgroundColor: '#4A342E', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 15, marginTop: 20 },
-  browseBtnText: { color: '#FFF', fontWeight: '700' }
+  emptyText: { color: '#64748B', marginTop: 10, fontWeight: '700', fontSize: 16 },
+  browseBtn: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 18, marginTop: 20, shadowColor: '#C2410C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4 },
+  browseBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 }
 });

@@ -7,21 +7,21 @@ export default function VendorLayout() {
       screenOptions={{
         // Global header styling for all vendor screens
         headerStyle: {
-          backgroundColor: COLORS.secondary,
+          backgroundColor: '#FFF',
         },
-        headerTintColor: '#FFF',
+        headerTintColor: COLORS.secondary,
         headerTitleStyle: {
           fontWeight: '800',
+          color: '#222',
         },
         headerShadowVisible: false, // Keeps the clean, minimalist look
-        headerBackTitleVisible: false, // Hides the "Back" text for a cleaner UI
       }}
     >
       {/* The main Dashboard */}
       <Stack.Screen 
         name="home" 
         options={{ 
-          headerShown: false // We keep this hidden because your home.tsx has a custom header
+          headerShown: false,
         }} 
       />
       

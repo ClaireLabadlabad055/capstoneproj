@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Profile() {
   const router = useRouter();
@@ -124,36 +125,44 @@ export default function Profile() {
   };
 
   if (authLoading) {
-    return <View style={styles.center}><ActivityIndicator size="large" /></View>;
+    return <View style={styles.center}><ActivityIndicator size="large" color="#C2410C" /></View>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
-      <View style={styles.whiteHeader}>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>
-            {view === 'menu' ? "My Profile" : view === 'address' ? "Personal Info" : "Account Settings"}
-          </Text>
-        </View>
-        {view !== 'menu' && (
-          <TouchableOpacity onPress={() => setView('menu')} style={styles.headerLeftAction}>
-            <Feather name="arrow-left" size={24} color="#4A342E" />
-          </TouchableOpacity>
-        )}
-      </View>
+      <StatusBar barStyle="light-content" backgroundColor="#451A03" />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* Styled Header matching HomeScreen Warm Gradient Theme */}
+      <LinearGradient
+        colors={['#451A03', '#7C2D12', '#C2410C']}
+        style={styles.gradientHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        {view !== 'menu' ? (
+          <TouchableOpacity onPress={() => setView('menu')} style={styles.headerLeftAction} activeOpacity={0.8}>
+            <Feather name="arrow-left" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerRightSpacer} />
+        )}
+        <Text style={styles.headerTitleText}>
+          {view === 'menu' ? "My Profile" : view === 'address' ? "Personal Info" : "Account Settings"}
+        </Text>
+        <View style={styles.headerRightSpacer} />
+      </LinearGradient>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {view === 'menu' && (
           <View>
             <View style={styles.profileCard}>
               <View style={styles.avatarWrapper}>
-                {uploading ? <ActivityIndicator /> : profileImage ? (
+                {uploading ? <ActivityIndicator color="#C2410C" /> : profileImage ? (
                   <Image source={{ uri: profileImage }} style={styles.avatarImage} />
                 ) : (
-                  <View style={styles.avatarPlaceholder}><Ionicons name="person" size={50} color="#D2B48C" /></View>
+                  <View style={styles.avatarPlaceholder}><Ionicons name="person" size={50} color="#C2410C" /></View>
                 )}
-                <TouchableOpacity style={styles.cameraBtn} onPress={pickImage}>
+                <TouchableOpacity style={styles.cameraBtn} activeOpacity={0.8} onPress={pickImage}>
                   <Feather name="camera" size={16} color="#FFF" />
                 </TouchableOpacity>
               </View>
@@ -162,31 +171,34 @@ export default function Profile() {
             </View>
 
             <View style={styles.menuContainer}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setView('address')}>
-                <View style={[styles.iconBg, {backgroundColor: '#FDF5F2'}]}><Feather name="map-pin" size={20} color="#8D493A" /></View>
+              <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => setView('address')}>
+                <View style={[styles.iconBg, {backgroundColor: '#FFF7ED'}]}><Feather name="map-pin" size={20} color="#C2410C" /></View>
                 <View style={styles.menuTextContent}>
                   <Text style={styles.menuLabel}>Personal Info</Text>
-                  <Text style={styles.menuSubLabel}>{tempAddress.details}</Text>
+                  <Text style={styles.menuSubLabel} numberOfLines={1}>{tempAddress.details || 'Tap to add address'}</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#CCC" />
+                <Feather name="chevron-right" size={20} color="#94A3B8" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/customer/history')}>
-                <View style={[styles.iconBg, {backgroundColor: '#EFF6FF'}]}><Feather name="clock" size={20} color="#3B82F6" /></View>
+              
+              <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/customer/history')}>
+                <View style={[styles.iconBg, {backgroundColor: '#FFF7ED'}]}><Feather name="clock" size={20} color="#C2410C" /></View>
                 <View style={styles.menuTextContent}>
                   <Text style={styles.menuLabel}>History</Text>
                   <Text style={styles.menuSubLabel}>View past orders and status</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#CCC" />
+                <Feather name="chevron-right" size={20} color="#94A3B8" />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={() => setView('settings')}>
-                <View style={[styles.iconBg, {backgroundColor: '#FAF9F6'}]}><Feather name="settings" size={20} color="#708090" /></View>
+              
+              <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} activeOpacity={0.7} onPress={() => setView('settings')}>
+                <View style={[styles.iconBg, {backgroundColor: '#FFF7ED'}]}><Feather name="settings" size={20} color="#C2410C" /></View>
                 <View style={styles.menuTextContent}><Text style={styles.menuLabel}>Account Settings</Text></View>
-                <Feather name="chevron-right" size={20} color="#CCC" />
+                <Feather name="chevron-right" size={20} color="#94A3B8" />
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity
               style={styles.logoutBtn}
+              activeOpacity={0.8}
               onPress={async () => {
                 try {
                   await logout();
@@ -197,7 +209,7 @@ export default function Profile() {
                 }
               }}
             >
-              <Feather name="log-out" size={18} color="#FF3B30" />
+              <Feather name="log-out" size={18} color="#EF4444" />
               <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
           </View>
@@ -206,45 +218,63 @@ export default function Profile() {
         {view === 'address' && (
           <View style={styles.formCard}>
             <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput style={styles.input} value={tempAddress.name} onChangeText={(t) => setTempAddress({...tempAddress, name: t})} />
+            <TextInput style={styles.input} value={tempAddress.name} onChangeText={(t) => setTempAddress({...tempAddress, name: t})} placeholderTextColor="#94A3B8" />
+            
             <Text style={styles.inputLabel}>Phone Number</Text>
-            <TextInput style={styles.input} value={tempAddress.phone} onChangeText={(t) => setTempAddress({...tempAddress, phone: t})} keyboardType="phone-pad" />
+            <TextInput style={styles.input} value={tempAddress.phone} onChangeText={(t) => setTempAddress({...tempAddress, phone: t})} keyboardType="phone-pad" placeholderTextColor="#94A3B8" />
+            
             <Text style={styles.inputLabel}>Address</Text>
-            <TextInput style={styles.input} value={tempAddress.details} onChangeText={(t) => setTempAddress({...tempAddress, details: t})} />
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={async () => {
-                if (!user) return;
-                try {
-                  const updates = {
-                    full_name: tempAddress.name,
-                    phone: tempAddress.phone,
-                    address: tempAddress.details,
-                  };
+            <TextInput style={styles.input} value={tempAddress.details} onChangeText={(t) => setTempAddress({...tempAddress, details: t})} placeholderTextColor="#94A3B8" />
+            
+            <TouchableOpacity activeOpacity={0.8} onPress={async () => {
+              if (!user) return;
+              try {
+                const profileUpdates = {
+                  full_name: tempAddress.name,
+                  phone: tempAddress.phone,
+                  address: tempAddress.details,
+                };
+                const customerUpdates = {
+                  address: tempAddress.details,
+                };
 
-                  const [{ error: customerUpdateError }, { error: profileUpdateError }] = await Promise.all([
-                    supabase.from('customers').update(updates).eq('id', user.id),
-                    supabase.from('profiles').update(updates).eq('id', user.id),
-                  ]);
+                const changedFields = [];
+                if (userData?.full_name !== tempAddress.name) changedFields.push('name');
+                if (userData?.phone !== tempAddress.phone) changedFields.push('phone');
+                if (userData?.address !== tempAddress.details) changedFields.push('address');
 
-                  if (customerUpdateError || profileUpdateError) {
-                    const errorMessage = customerUpdateError?.message || profileUpdateError?.message || 'Failed to update profile data in one or more tables.';
-                    throw new Error(errorMessage);
-                  }
+                const [{ error: customerUpdateError }, { error: profileUpdateError }] = await Promise.all([
+                  supabase.from('customers').update(customerUpdates).eq('id', user.id),
+                  supabase.from('profiles').update(profileUpdates).eq('id', user.id),
+                ]);
 
-                  if (typeof updateLocalUserData === 'function') {
-                    updateLocalUserData(updates);
-                  }
-                  if (user?.id) await refreshUserData(user.id);
-                  Alert.alert('Saved', 'Profile and shipping address updated.');
-                  setView('menu');
-                } catch (err) {
-                  console.error('Update failed', err);
-                  Alert.alert('Error', 'Could not save your profile.');
+                if (customerUpdateError || profileUpdateError) {
+                  const errorMessage = customerUpdateError?.message || profileUpdateError?.message || 'Failed to update profile data in one or more tables.';
+                  throw new Error(errorMessage);
                 }
-              }}
-            >
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+
+                if (typeof updateLocalUserData === 'function') {
+                  updateLocalUserData(profileUpdates);
+                }
+                if (user?.id) await refreshUserData(user.id);
+
+                const savedMessage = changedFields.length > 0
+                  ? `Updated ${changedFields.join(', ')}.`
+                  : 'No changes were detected.';
+
+                Alert.alert('Saved', savedMessage);
+                setView('menu');
+              } catch (err) {
+                console.error('Update failed', err);
+                Alert.alert('Error', 'Could not save your profile.');
+              }
+            }}>
+              <LinearGradient
+                colors={['#C2410C', '#9A3412']}
+                style={styles.saveBtn}
+              >
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         )}
@@ -254,51 +284,54 @@ export default function Profile() {
             <Text style={styles.formTitle}>Account Settings</Text>
 
             <Text style={[styles.inputLabel, { marginTop: 6 }]}>Change Password</Text>
-            <TextInput style={styles.input} placeholder="New password" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
-            <TextInput style={styles.input} placeholder="Confirm new password" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+            <TextInput style={styles.input} placeholder="New password" placeholderTextColor="#94A3B8" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
+            <TextInput style={styles.input} placeholder="Confirm new password" placeholderTextColor="#94A3B8" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
 
             <Text style={[styles.inputLabel, { marginTop: 6 }]}>Change Email</Text>
-            <TextInput style={styles.input} placeholder="New email address" keyboardType="email-address" autoCapitalize="none" value={newEmail} onChangeText={setNewEmail} />
+            <TextInput style={styles.input} placeholder="New email address" placeholderTextColor="#94A3B8" keyboardType="email-address" autoCapitalize="none" value={newEmail} onChangeText={setNewEmail} />
 
             <View style={{ height: 10 }} />
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Push Notifications</Text>
-              <Switch value={isNotificationsEnabled} onValueChange={setIsNotificationsEnabled} trackColor={{ true: "#4A342E" }} />
+              <Switch 
+                value={isNotificationsEnabled} 
+                onValueChange={setIsNotificationsEnabled} 
+                trackColor={{ true: "#C2410C", false: "#E2E8F0" }} 
+                thumbColor="#FFFFFF"
+              />
             </View>
 
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={async () => {
-                try {
-                  // 1) Change password if provided
-                  if (newPassword) {
-                    if (newPassword !== confirmPassword) {
-                      Alert.alert('Error', 'Passwords do not match.');
-                      return;
-                    }
-                    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
-                    if (error) throw error;
+            <TouchableOpacity activeOpacity={0.8} style={{ marginTop: 10 }} onPress={async () => {
+              try {
+                if (newPassword) {
+                  if (newPassword !== confirmPassword) {
+                    Alert.alert('Error', 'Passwords do not match.');
+                    return;
                   }
-
-
-                  // 2) Change email if provided
-                  if (newEmail && newEmail.trim() !== '') {
-                    const { data: emailData, error: emailErr } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() });
-                    if (emailErr) throw emailErr;
-                  }
-
-                  // Refresh local context
-                  if (user?.id) await refreshUserData(user.id);
-                  setNewPassword(''); setConfirmPassword('');
-                  Alert.alert('Saved', 'Account settings updated.');
-                  setView('menu');
-                } catch (err: any) {
-                  console.error('Settings update failed', err);
-                  Alert.alert('Error', err?.message || 'Could not save settings.');
+                  const { error } = await supabase.auth.updateUser({ password: newPassword });
+                  if (error) throw error;
                 }
-              }}
-            >
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+
+                if (newEmail && newEmail.trim() !== '') {
+                  const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() });
+                  if (emailErr) throw emailErr;
+                }
+
+                if (user?.id) await refreshUserData(user.id);
+                setNewPassword(''); setConfirmPassword(''); setNewEmail('');
+                Alert.alert('Saved', 'Account settings updated.');
+                setView('menu');
+              } catch (err: any) {
+                console.error('Settings update failed', err);
+                Alert.alert('Error', err?.message || 'Could not save settings.');
+              }
+            }}>
+              <LinearGradient
+                colors={['#C2410C', '#9A3412']}
+                style={styles.saveBtn}
+              >
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         )}
@@ -308,34 +341,167 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { flex: 1, backgroundColor: '#F9FBFC' },
-  whiteHeader: { height: 60, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderBottomWidth: 1, borderColor: '#F0F0F0', marginTop: Platform.OS === 'android' ? 20 : 0 },
-  headerTitleContainer: { position: 'absolute', left: 0, right: 0, justifyContent: 'center', alignItems: 'center' },
-  headerTitleText: { fontSize: 18, fontWeight: '800', color: '#4A342E' },
-  headerLeftAction: { padding: 8, zIndex: 10 },
-  content: { paddingHorizontal: 20, paddingTop: 30 },
-  profileCard: { alignItems: 'center', marginBottom: 35 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  
+  gradientHeader: {
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  headerTitleText: { 
+    fontSize: 18, 
+    fontWeight: '900', 
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  headerLeftAction: { 
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  headerRightSpacer: {
+    width: 36,
+  },
+
+  content: { padding: 20, paddingBottom: 40 },
+  
+  profileCard: { 
+    alignItems: 'center', 
+    marginBottom: 24, 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 28, 
+    paddingVertical: 24, 
+    paddingHorizontal: 20, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9', 
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.12, 
+    shadowOffset: { width: 0, height: 8 }, 
+    shadowRadius: 16, 
+    elevation: 4 
+  },
   avatarWrapper: { position: 'relative', marginBottom: 15 },
-  avatarPlaceholder: { width: 110, height: 110, borderRadius: 55, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 4 },
+  avatarPlaceholder: { 
+    width: 110, 
+    height: 110, 
+    borderRadius: 55, 
+    backgroundColor: '#FFF7ED', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    elevation: 2, 
+    borderWidth: 1, 
+    borderColor: '#FFEDD5' 
+  },
   avatarImage: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: '#FFF' },
-  cameraBtn: { position: 'absolute', bottom: 5, right: 0, backgroundColor: '#4A342E', width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  userName: { fontSize: 24, fontWeight: '900', color: '#4A342E' },
-  userPhone: { fontSize: 14, color: '#666', marginTop: 6 },
-  menuContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 10, elevation: 2 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: '#F9F9F9' },
-  iconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  cameraBtn: { 
+    position: 'absolute', 
+    bottom: 5, 
+    right: 0, 
+    backgroundColor: '#C2410C', 
+    width: 34, 
+    height: 34, 
+    borderRadius: 17, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    elevation: 4,
+    shadowColor: '#C2410C',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  userName: { fontSize: 22, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  userPhone: { fontSize: 14, color: '#64748B', marginTop: 4, fontWeight: '600' },
+  
+  menuContainer: { 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 24, 
+    padding: 8, 
+    elevation: 6, 
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.08, 
+    shadowRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9' 
+  },
+  menuItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 16, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#F8FAFC' 
+  },
+  iconBg: { 
+    width: 42, 
+    height: 42, 
+    borderRadius: 14, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 15,
+    borderWidth: 1,
+    borderColor: '#FFEDD5'
+  },
   menuTextContent: { flex: 1 },
-  menuLabel: { fontSize: 16, fontWeight: '700', color: '#4A342E' },
-  menuSubLabel: { fontSize: 12, color: '#AAA', marginTop: 3 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 30, padding: 10 },
-  logoutText: { marginLeft: 8, color: '#FF3B30', fontWeight: '800', fontSize: 16 },
-  formCard: { backgroundColor: '#FFF', padding: 25, borderRadius: 25, elevation: 2 },
-  formTitle: { fontSize: 18, fontWeight: '800', color: '#4A342E', marginBottom: 10 },
-  inputLabel: { fontSize: 13, fontWeight: '700', color: '#999', marginBottom: 8, marginLeft: 4 },
-  input: { backgroundColor: '#FAF9F6', padding: 16, borderRadius: 15, marginBottom: 18, fontSize: 15, color: '#4A342E', borderWidth: 1, borderColor: '#F0EBE3' },
-  saveBtn: { backgroundColor: '#4A342E', padding: 18, borderRadius: 18, alignItems: 'center', marginTop: 10 },
+  menuLabel: { fontSize: 15, fontWeight: '800', color: '#1E293B' },
+  menuSubLabel: { fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: '600' },
+  
+  logoutBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginTop: 24, 
+    padding: 14, 
+    backgroundColor: '#FEF2F2', 
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#FEE2E2'
+  },
+  logoutText: { marginLeft: 8, color: '#EF4444', fontWeight: '800', fontSize: 15 },
+  
+  formCard: { 
+    backgroundColor: '#FFFFFF', 
+    padding: 24, 
+    borderRadius: 28, 
+    elevation: 12, 
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.12, 
+    shadowRadius: 16, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9' 
+  },
+  formTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 16, letterSpacing: -0.3 },
+  inputLabel: { fontSize: 13, fontWeight: '800', color: '#64748B', marginBottom: 8, marginLeft: 4 },
+  input: { 
+    backgroundColor: '#F8FAFC', 
+    padding: 16, 
+    borderRadius: 16, 
+    marginBottom: 16, 
+    fontSize: 15, 
+    color: '#1E293B', 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0',
+    fontWeight: '600'
+  },
+  saveBtn: { 
+    paddingVertical: 16, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    marginTop: 8,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
-  settingLabel: { fontWeight: '600', color: '#4A342E', fontSize: 15 },
+  
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  settingLabel: { fontWeight: '800', color: '#1E293B', fontSize: 15 },
 });

@@ -7,12 +7,12 @@ import {
   TouchableOpacity, 
   ScrollView, 
   StatusBar, 
-  SafeAreaView, 
   Dimensions, 
   Platform 
 } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
+import GradientHeader from '../_components/GradientHeader';
 
 const getVendorStatus = (item: any) => {
   const approvalStatus = String(item?.approval_status || item?.status || '').trim().toLowerCase();
@@ -28,7 +28,7 @@ const getVendorStatus = (item: any) => {
 
   return 'Pending';
 };
-import { COLORS, SHADOWS } from '../../styles/globalStyles';
+import { COLORS } from '../../styles/globalStyles';
 import { supabase } from '../../lib/supabaseClient';
 
 // Get device width for responsive grid
@@ -149,22 +149,22 @@ export default function AdminDashboard() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      <StatusBar barStyle="light-content" backgroundColor="#C2410C" />
       
-      {/* --- HEADER SECTION --- */}
-      <View style={styles.header}>
-        <SafeAreaView>
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.adminTag}>System Administrator</Text>
-              <Text style={styles.welcomeText}>Platform Overview</Text>
-            </View>
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-              <Feather name="log-out" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </View>
+      <GradientHeader
+        colors={['#C2410C', '#9A3412', '#7C2D12']}
+        titleContainerStyle={{ alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 0, marginLeft: 0 }}
+        rightAction={
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Feather name="log-out" size={18} color="#C2410C" />
+          </TouchableOpacity>
+        }
+      >
+        <View style={styles.headerTextBlock}>
+          <Text style={styles.adminTag}>System Administrator</Text>
+          <Text style={styles.welcomeText}>Platform Overview</Text>
+        </View>
+      </GradientHeader>
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 
@@ -173,7 +173,7 @@ export default function AdminDashboard() {
         {/* --- KPI STATS GRID --- */}
         <View style={styles.statsGrid}>
           {platformStats.map((stat) => (
-            <View key={stat.id} style={[styles.statCard, SHADOWS?.small]}>
+            <View key={stat.id} style={styles.statCard}>
               <View style={[styles.iconCircle, { backgroundColor: stat.color + '15' }]}>
                 <MaterialCommunityIcons name={stat.icon as any} size={22} color={stat.color} />
               </View>
@@ -187,52 +187,57 @@ export default function AdminDashboard() {
         <Text style={[styles.sectionTitle, styles.actionTitle]}>System Control</Text>
         <View style={styles.actionRow}>
           <TouchableOpacity 
-            style={[styles.actionCard, SHADOWS?.small]} 
+            style={styles.actionCard} 
             onPress={() => router.push('/admin/vendor')}
+            activeOpacity={0.85}
           >
             <View style={[styles.actionIcon, { backgroundColor: '#EEF2FF' }]}>
-              <Feather name="users" size={24} color="#4F46E5" />
+              <Feather name="users" size={22} color="#4F46E5" />
             </View>
             <Text style={styles.actionText}>Manage Vendors</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionCard, SHADOWS?.small]} 
+            style={styles.actionCard} 
             onPress={() => router.push('/admin/approvals')}
+            activeOpacity={0.85}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#FFF7ED' }]}>
-              <Feather name="check-square" size={24} color="#D97706" />
+            <View style={[styles.actionIcon, { backgroundColor: '#FFEDD5' }]}>
+              <Feather name="check-square" size={22} color="#C2410C" />
             </View>
             <Text style={styles.actionText}>Approvals</Text>
             <View style={styles.badge}><Text style={styles.badgeText}>{pendingApprovals}</Text></View>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionCard, SHADOWS?.small]} 
+            style={styles.actionCard} 
             onPress={() => router.push('/admin/transactions')}
+            activeOpacity={0.85}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#ECFDF5' }]}> 
-              <Feather name="activity" size={24} color="#059669" />
+            <View style={[styles.actionIcon, { backgroundColor: '#DCFCE7' }]}> 
+              <Feather name="activity" size={22} color="#15803D" />
             </View>
             <Text style={styles.actionText}>Transactions</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionCard, SHADOWS?.small]} 
+            style={styles.actionCard} 
             onPress={() => router.push('/admin/audits')}
+            activeOpacity={0.85}
           >
             <View style={[styles.actionIcon, { backgroundColor: '#EFF6FF' }]}> 
-              <Feather name="clipboard" size={24} color="#4F46E5" />
+              <Feather name="clipboard" size={22} color="#4F46E5" />
             </View>
             <Text style={styles.actionText}>Menu Audits</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionCard, SHADOWS?.small]} 
+            style={styles.actionCard} 
             onPress={() => router.push('/admin/support')}
+            activeOpacity={0.85}
           >
             <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}> 
-              <Feather name="message-square" size={24} color="#D97706" />
+              <Feather name="message-square" size={22} color="#D97706" />
             </View>
             <Text style={styles.actionText}>Support</Text>
           </TouchableOpacity>
@@ -241,33 +246,39 @@ export default function AdminDashboard() {
         {/* --- VENDOR PERFORMANCE LIST --- */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Top Performing Vendors</Text>
-          <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
         </View>
 
-        {topMerchants.map((vendor) => (
-          <TouchableOpacity 
-            key={vendor.id} 
-            style={styles.vendorItem}
-            onPress={() => router.push({
-              pathname: '/admin/vendor-details',
-              params: { id: vendor.id, name: vendor.business_name || vendor.full_name }
-            })}
-          >
-            <View style={styles.vendorInfo}>
-              <View style={styles.vendorAvatar}>
-                <Text style={styles.avatarText}>{(vendor.business_name || vendor.full_name || 'V').charAt(0)}</Text>
-              </View>
-              <View>
-                <Text style={styles.vendorNameText}>{vendor.business_name || vendor.full_name || 'Unnamed Vendor'}</Text>
-                <View style={styles.statusRow}>
-                  <View style={[styles.statusDot, { backgroundColor: getVendorStatus(vendor) === 'Pending' ? '#F59E0B' : getVendorStatus(vendor) === 'Rejected' ? '#EF4444' : '#10B981' }]} />
-                  <Text style={styles.statusText}>{getVendorStatus(vendor)}</Text>
+        {topMerchants.map((vendor) => {
+          const status = getVendorStatus(vendor);
+          const isPending = status === 'Pending';
+          const isRejected = status === 'Rejected';
+          return (
+            <TouchableOpacity 
+              key={vendor.id} 
+              style={styles.vendorItem}
+              onPress={() => router.push({
+                pathname: '/admin/vendor-details',
+                params: { id: vendor.id, name: vendor.business_name || vendor.full_name }
+              })}
+              activeOpacity={0.85}
+            >
+              <View style={styles.vendorInfo}>
+                <View style={styles.vendorAvatar}>
+                  <Text style={styles.avatarText}>{(vendor.business_name || vendor.full_name || 'V').charAt(0)}</Text>
                 </View>
-                <Text style={[styles.categoryTag, { marginTop: 4 }]}>{vendor.address || vendor.barangay || vendor.location || 'No address available'}</Text>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.vendorNameText} numberOfLines={1}>{vendor.business_name || vendor.full_name || 'Unnamed Vendor'}</Text>
+                  <View style={styles.statusRow}>
+                    <View style={[styles.statusDot, { backgroundColor: isPending ? '#D97706' : isRejected ? '#EF4444' : '#15803D' }]} />
+                    <Text style={styles.statusText}>{status}</Text>
+                  </View>
+                  <Text style={styles.categoryTag} numberOfLines={1}>{vendor.address || vendor.barangay || vendor.location || 'No address available'}</Text>
+                </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -275,74 +286,80 @@ export default function AdminDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { 
-    backgroundColor: '#FFF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0, 
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-  },
-  headerContent: {
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 25, 
-    paddingVertical: 20,
-  },
   adminTag: { 
-    fontSize: 11, 
-    fontWeight: '800', 
-    color: COLORS.primary, 
+    fontSize: 10, 
+    fontWeight: '900', 
+    color: '#FFEDD5', 
     textTransform: 'uppercase', 
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     marginBottom: 2
   },
-  welcomeText: { fontSize: 24, fontWeight: '900', color: '#1E293B' },
-  logoutBtn: { padding: 12, backgroundColor: '#FFF1F1', borderRadius: 14 },
-  scrollContent: { padding: 20, paddingTop: 10 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 18 },
+  welcomeText: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
+  headerTextBlock: { alignItems: 'flex-start' },
+  logoutBtn: { backgroundColor: '#FFEDD5', padding: 8, borderRadius: 14, borderWidth: 1, borderColor: '#FED7AA' },
+  scrollContent: { padding: 20, paddingTop: 16, paddingBottom: 100 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
   statCard: { 
     backgroundColor: '#FFF', 
-    width: (width - 55) / 2, // Uses the width constant correctly
-    padding: 20, 
-    borderRadius: 24, 
-    marginBottom: 15,
+    width: (width - 52) / 2, 
+    padding: 18, 
+    borderRadius: 20, 
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  iconCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  statValue: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
-  statLabel: { fontSize: 12, color: '#64748B', fontWeight: '700', marginTop: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 12 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 15 },
-  viewAll: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 30 },
-  actionTitle: { marginBottom: 8 },
-  actionCard: { width: '47%', backgroundColor: '#FFF', padding: 16, borderRadius: 24, alignItems: 'center', minHeight: 130 },
-  actionIcon: { width: 52, height: 52, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  actionText: { fontSize: 12, fontWeight: '900', color: '#334155', textAlign: 'center' },
-  badge: { position: 'absolute', top: 18, right: 18, backgroundColor: '#EF4444', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
+  iconCircle: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  statValue: { fontSize: 22, fontWeight: '900', color: '#1E293B', letterSpacing: -0.5 },
+  statLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '800', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 14 },
+  viewAll: { color: '#C2410C', fontWeight: '900', fontSize: 12 },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 24 },
+  actionTitle: { marginBottom: 12 },
+  actionCard: { 
+    width: '31%', 
+    backgroundColor: '#FFF', 
+    padding: 14, 
+    borderRadius: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    minHeight: 110,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  actionText: { fontSize: 11, fontWeight: '900', color: '#334155', textAlign: 'center', letterSpacing: -0.2 },
+  badge: { position: 'absolute', top: 10, right: 10, backgroundColor: '#C2410C', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   badgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   vendorItem: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     backgroundColor: '#FFF', 
-    padding: 18, 
-    borderRadius: 22, 
+    padding: 16, 
+    borderRadius: 20, 
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#F1F5F9'
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  vendorInfo: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  vendorAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 20, fontWeight: '900', color: COLORS.primary },
-  vendorNameText: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  vendorSales: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
-  vendorRating: { fontSize: 12, color: '#64748B', marginTop: 3 }
+  vendorInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  vendorAvatar: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 18, fontWeight: '900', color: '#C2410C' },
+  vendorNameText: { fontSize: 15, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, color: '#64748B', fontWeight: '800' },
+  categoryTag: { fontSize: 11, color: '#94A3B8', marginTop: 3, fontWeight: '700' }
 });

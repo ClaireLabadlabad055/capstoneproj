@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Image, TextInput, SafeAreaVie
 import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 
@@ -17,10 +18,10 @@ const CARD_WIDTH = width * 0.45;
 
 const CATEGORIES = ['All Vendors', ...CUSTOMER_HOME_CATEGORIES];
 const CAT_ICONS: { [key: string]: string } = {
-  'All Vendors': 'grid-outline',
+  'All Vendors': 'apps-outline',
   'Snacks': 'fast-food-outline',
   'Sweets': 'ice-cream-outline',
-  'Beverages': 'beer-outline',
+  'Beverages': 'cafe-outline',
   'Meals': 'restaurant-outline'
 };
 
@@ -28,10 +29,8 @@ const getImageSource = (value: any) => {
   if (typeof value === 'number') return value;
   if (value?.uri) return { uri: value.uri };
   if (typeof value === 'string') {
-    // If already a public URL, use it
     if (value.startsWith('http')) return { uri: value };
 
-    // Try to infer bucket and get public URL via Supabase helper
     try {
       let bucket = 'covers';
       const path = value;
@@ -44,20 +43,17 @@ const getImageSource = (value: any) => {
       // fallthrough to return raw value
     }
 
-    // Fallback - return raw value as uri (may be handled elsewhere)
     return { uri: value };
   }
   return require('../../assets/images/cstbg.jpg');
 };
 
-// Resolve a DB-stored image value (public URL, storage path, or object) to a usable public URL string
 const resolveStorageUrl = async (value: any) => {
   if (!value) return null;
   if (typeof value === 'object' && value.uri) return value.uri;
   if (typeof value === 'string') {
     if (value.startsWith('http')) return value;
 
-    // Try to infer bucket from path
     const path = value;
     let bucket = 'covers';
     if (path.includes('/products/') || path.startsWith('products/')) bucket = 'products';
@@ -70,7 +66,6 @@ const resolveStorageUrl = async (value: any) => {
       // ignore and continue to try other buckets
     }
 
-    // Try both common buckets as a fallback
     for (const b of ['covers', 'products']) {
       try {
         const { data } = supabase.storage.from(b).getPublicUrl(path);
@@ -80,7 +75,6 @@ const resolveStorageUrl = async (value: any) => {
       }
     }
 
-    // Fallback: return original path so getImageSource can handle it
     return path;
   }
   return null;
@@ -89,25 +83,43 @@ const resolveStorageUrl = async (value: any) => {
 const VendorCard = ({ item, onOpen }: any) => {
   const displayName = item.name;
   const displayImage = item.image || item.coverImage || require('../../assets/images/cstbg.jpg');
+  const vendorDescription = item.description && item.description !== item.category && item.description !== item.categoryType ? item.description : null;
+  const vendorCategory = item.category || item.categoryType || 'Delicacies';
+  const pickupLabel = item.meetupPoint ? `Pickup at ${item.meetupPoint}` : item.meetupDetails || null;
 
   return (
-    <TouchableOpacity style={styles.vendorCardVertical} onPress={onOpen}>
-      <Image source={displayImage} style={styles.vendorLargeImage} />
-      {typeof (item.coverImage) === 'string' && (
-        <View style={{ padding: 6, backgroundColor: '#FFF', position: 'absolute', left: 10, bottom: 10, borderRadius: 6 }}>
-          <Text style={{ fontSize: 10, maxWidth: 200 }} numberOfLines={1}>{item.coverImage}</Text>
+    <TouchableOpacity style={styles.vendorCardVertical} onPress={onOpen} activeOpacity={0.9}>
+      <View style={styles.vendorImageWrapper}>
+        <Image source={displayImage} style={styles.vendorLargeImage} />
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.4)']}
+          style={styles.imageOverlayGradient}
+        />
+        <View style={styles.ratingBadgeFloating}>
+          <Ionicons name="star" size={13} color="#F59E0B" />
+          <Text style={styles.ratingBadgeText}>{item.rating}</Text>
         </View>
-      )}
-      <View style={styles.ratingBadgeFloating}>
-        <Ionicons name="star" size={14} color="#FFD700" />
-        <Text style={styles.ratingBadgeText}>{item.rating}</Text>
       </View>
+
       <View style={styles.vendorInfoContent}>
         <View style={styles.vendorTitleRow}>
-          <Text style={styles.vendorNameLarge}>{displayName}</Text>
+          <Text style={styles.vendorNameLarge} numberOfLines={1}>{displayName}</Text>
           <Text style={styles.vendorPriceRange}>₱₱</Text>
         </View>
-        <Text style={styles.vendorCategorySubtitle}>{item.category}</Text>
+
+        <Text style={styles.vendorCategorySubtitle}>{vendorCategory}</Text>
+        {vendorDescription ? <Text style={styles.vendorDescription} numberOfLines={2}>{vendorDescription}</Text> : null}
+
+        <View style={styles.vendorMetaRow}>
+          <View style={styles.metaItem}>
+            <Ionicons name="location-outline" size={13} color="#64748B" />
+            <Text style={styles.metaText} numberOfLines={1}>{item.location || 'Toledo City, Cebu'}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Ionicons name="map-outline" size={13} color="#64748B" />
+            <Text style={styles.metaText} numberOfLines={1}>{pickupLabel || 'Pickup info unavailable'}</Text>
+          </View>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -119,7 +131,7 @@ const ProductCard = ({ item, onPress }: any) => {
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   const handleAdd = () => {
-    scale.value = withTiming(1.1, { duration: 150 }, () => {
+    scale.value = withTiming(1.08, { duration: 150 }, () => {
       scale.value = withTiming(1, { duration: 150 });
     });
     addToCart({ ...item, vendorName: item.vendorName || 'Vendor', qty: 1 });
@@ -135,18 +147,23 @@ const ProductCard = ({ item, onPress }: any) => {
 
   return (
     <Animated.View style={[styles.popularCard, animatedStyle]}>
-      <TouchableOpacity onPress={() => onPress(item)}>
+      <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.95}>
         <Image source={renderImg()} style={styles.popularItemImg} />
       </TouchableOpacity>
       <View style={styles.popularCardContent}>
-        <TouchableOpacity onPress={() => onPress(item)}>
+        <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.95}>
           <Text style={styles.popularItemName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.popularItemDesc} numberOfLines={1}>{item.desc || "A local favorite!"}</Text>
         </TouchableOpacity>
         <View style={styles.priceRow}>
           <Text style={styles.popularItemPrice}>₱{item.price}</Text>
-          <TouchableOpacity onPress={handleAdd} style={styles.addToCartSmallBtn}>
-            <Ionicons name="add" size={18} color="#FFF" />
+          <TouchableOpacity onPress={handleAdd} style={styles.addToCartSmallBtn} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['#C2410C', '#9A3412']}
+              style={styles.btnMiniGradient}
+            >
+              <Ionicons name="add" size={16} color="#FFF" />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -180,7 +197,6 @@ export default function UserDashboard() {
 
   useEffect(() => {
     const fetchMerchants = async () => {
-      // Fetch merchant records first.
       let { data, error } = await supabase.from('merchants').select('*');
       setMerchantError(error?.message || null);
       setMerchantCount(data?.length || 0);
@@ -190,7 +206,6 @@ export default function UserDashboard() {
         data.forEach((merchant: any) => merchantMap.set(String(merchant.id), merchant));
       }
 
-      // If products exist, ensure we also fetch any referenced merchant IDs not already loaded.
       if (products && products.length > 0) {
         const vendorIds = Array.from(new Set((products || []).map((p: any) => p.vendor_id || p.vendorId).filter(Boolean))).map((id: any) => String(id));
         const missingIds = vendorIds.filter((id: string) => !merchantMap.has(id));
@@ -262,7 +277,7 @@ export default function UserDashboard() {
         name: merchant.business_name || 'Vendor',
         category: merchant.delicacy_type || 'General',
         categoryType: merchant.delicacy_type || 'Others',
-        rating: '4.5',
+        rating: '4.8',
         distance: '1.2km',
         image: getImageSource(merchant?.cover_image || null),
         isSynced: true,
@@ -278,16 +293,12 @@ export default function UserDashboard() {
 
     (products || []).forEach((product: any) => {
       const merchantId = product.vendor_id || product.vendorId || null;
-      // Try to find merchant by id first
       let merchant = (merchants || []).find((entry: any) => String(entry.id) === String(merchantId));
 
-      // If no merchant found by id, try to match by business_name using vendorName from product
       if (!merchant && product.vendorName) {
         merchant = (merchants || []).find((entry: any) => String(entry.business_name || '').toLowerCase() === String(product.vendorName || '').toLowerCase());
       }
 
-      // Build a stable, unique vendor key. Prefer merchant id, then vendor_id, then vendorName,
-      // finally fall back to a product-specific key to avoid merging unrelated products into one vendor.
       let vendorKey: string;
       if (merchant?.id) vendorKey = String(merchant.id);
       else if (merchantId) vendorKey = `id:${String(merchantId)}`;
@@ -303,7 +314,7 @@ export default function UserDashboard() {
           name: merchant?.business_name || product.vendorName || product.vendor_name || 'Vendor',
           category: merchant?.delicacy_type || product.category || 'General',
           categoryType: merchant?.delicacy_type || product.category || 'Others',
-          rating: '4.5',
+          rating: '4.8',
           distance: '1.2km',
           image: getImageSource(chosenImage),
           isSynced: !!merchant,
@@ -363,82 +374,120 @@ export default function UserDashboard() {
     }
   }, [recentLoginStatus]);
 
+  const displayDeals = (filteredProducts.length > 0 ? filteredProducts : MOCK_PRODUCTS).slice(0, 4);
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity><Ionicons name="menu-outline" size={28} color={COLORS.secondary} /></TouchableOpacity>
-          <View style={styles.locationContainer}>
-            <MaterialIcons name="location-pin" size={14} color={COLORS.secondary} />
-            <Text style={styles.locationText} numberOfLines={1}>Toledo City, Cebu</Text>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.mainScroll, { paddingBottom: 140 }]}> 
+        <View style={styles.topBar}>
+          <View>
+            <Text style={styles.timeText}>08:30</Text>
+            <View style={styles.locationRow}>
+              <MaterialIcons name="location-pin" size={16} color="#C2410C" />
+              <Text style={styles.locationText}>Toledo City, Cebu</Text>
+            </View>
           </View>
-         <TouchableOpacity onPress={() => router.push('/customer/profile')}>
-  {userData?.avatar_url && userData.avatar_url !== "" ? (
-    <Image 
-      // The 'key' forces a re-render when the URL changes (prevents caching issues)
-      key={userData.avatar_url} 
-      source={{ uri: userData.avatar_url }} 
-      style={styles.profilePlaceholder} 
-    />
-  ) : (
-    <View style={styles.profilePlaceholder}>
-      <Text style={styles.profileInitial}>
-        {userData?.full_name ? userData.full_name[0].toUpperCase() : 'C'}
-      </Text>
-    </View>
-  )}
-</TouchableOpacity>
-        </View>
-        <Text style={styles.welcomeText}>Hi {firstName}, <Text style={styles.orderLabelText}>Don't Wait, Order Your Food!</Text></Text>
-      </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.mainScroll, { paddingBottom: 120 }]}>
-        <View style={styles.searchBar}>
-          <Feather name="search" size={20} color="#AAA" />
-          <TextInput placeholder="Search delicacies..." style={styles.searchInput} value={searchQuery} onChangeText={setSearchQuery} />
+          <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.profileButton} activeOpacity={0.8}>
+            {userData?.avatar_url ? (
+              <Image key={userData.avatar_url} source={{ uri: userData.avatar_url }} style={styles.profileAvatar} />
+            ) : (
+              <View style={styles.profilePlaceholder}>
+                <Text style={styles.profileInitial}>{userData?.full_name ? userData.full_name[0].toUpperCase() : 'C'}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Categories</Text></View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesList}>
+        {/* Hero Card with Warm Gradient Matching Register Screen */}
+        <LinearGradient
+          colors={['#451A03', '#7C2D12', '#C2410C']}
+          style={styles.heroCard}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.heroLabel}>
+            <Text style={styles.heroLabelText}>Fresh / Supplied</Text>
+          </View>
+          <Text style={styles.heroTitle}>All Needs For You</Text>
+          <Text style={styles.heroSubtitle}>Fast delivery from trusted local vendors.</Text>
+          <View style={styles.heroFeatureRow}>
+            <View style={styles.heroFeatureChip}>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#C2410C" />
+              <Text style={styles.heroFeatureChipText}>Trusted vendors</Text>
+            </View>
+            <View style={[styles.heroFeatureChip, styles.heroFeatureChipSecondary]}>
+              <Ionicons name="shield-checkmark-outline" size={16} color="#FFF" />
+              <Text style={[styles.heroFeatureChipText, styles.heroFeatureChipTextSecondary]}>Safe ordering</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.searchSection}>
+          <View style={styles.searchBar}>
+            <Feather name="search" size={20} color="#94A3B8" />
+            <TextInput placeholder="Search delicacies..." placeholderTextColor="#94A3B8" style={styles.searchInput} value={searchQuery} onChangeText={setSearchQuery} />
+          </View>
+          <TouchableOpacity style={styles.filterButton} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['#C2410C', '#9A3412']}
+              style={styles.filterBtnGradient}
+            >
+              <Feather name="sliders" size={18} color="#FFF" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Category</Text>
+          <TouchableOpacity activeOpacity={0.7}><Text style={styles.sectionAction}>See All</Text></TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesList} contentContainerStyle={styles.categoriesListContent}>
           {CATEGORIES.map(cat => (
-            <TouchableOpacity key={cat} onPress={() => setActiveTab(cat)} style={styles.categoryCard}>
+            <TouchableOpacity key={cat} onPress={() => setActiveTab(cat)} style={[styles.categoryCard, activeTab === cat && styles.categoryCardActive]} activeOpacity={0.8}>
               <View style={[styles.categoryIconBg, activeTab === cat && styles.categoryIconBgActive]}>
-                <Ionicons name={CAT_ICONS[cat] as any} size={24} color={activeTab === cat ? "#FFF" : COLORS.secondary} />
+                <Ionicons name={CAT_ICONS[cat] as any} size={22} color={activeTab === cat ? '#FFF' : '#7C2D12'} />
               </View>
               <Text style={[styles.categoryName, activeTab === cat && styles.categoryNameActive]}>{cat.split(' ')[0]}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {(filteredProducts.length > 0 ? filteredProducts : MOCK_PRODUCTS).length > 0 && (
-          <>
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>🔥 Popular Items</Text></View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.popularScroll}>
-              {(filteredProducts.length > 0 ? filteredProducts : MOCK_PRODUCTS).map((item: any) => (<ProductCard key={item.id} item={item} onPress={setSelectedProduct} />))}
-            </ScrollView>
-          </>
-        )}
+        <View style={[styles.sectionHeaderRow, styles.sectionHeaderCompact]}>
+          <Text style={styles.sectionTitle}>Best Deal</Text>
+        </View>
 
-        <View style={[styles.sectionHeader, styles.sectionHeaderCompact]}><Text style={styles.sectionTitle}>Nearby Vendors</Text></View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dealScrollContent} style={styles.dealScroll}>
+          {displayDeals.map((item: any) => (
+            <View key={item.id || item.name} style={styles.dealCard}>
+              <ProductCard item={item} onPress={setSelectedProduct} />
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={[styles.sectionHeaderRow, styles.sectionHeaderCompact]}>
+          <Text style={styles.sectionTitle}>Nearby Vendors</Text>
+        </View>
+
         {(filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).length > 0 ? (
           (filteredVendors.length > 0 ? filteredVendors : MOCK_VENDORS).map((vendor: any) => (
             <VendorCard key={vendor.id} item={vendor} onOpen={() => router.push({
-            pathname: '/customer/VendorDetails',
-            params: {
-              id: vendor.id,
-              name: vendor.name,
-              category: vendor.category,
-              description: vendor.description || '',
-              location: vendor.location || 'Toledo City, Cebu',
-              meetupPoint: vendor.meetupPoint || '',
-              meetupDetails: vendor.meetupDetails || '',
-              mobile: vendor.mobile || '',
-              image: typeof vendor.image === 'string' ? vendor.image : (vendor.image?.uri || ''),
-              // Prefer the raw merchant.cover_image string from DB when available, else fall back to the computed coverImage uri
-              coverImage: vendor.merchant?.cover_image ? vendor.merchant.cover_image : (typeof vendor.coverImage === 'string' ? vendor.coverImage : (vendor.coverImage?.uri || '')),
-            },
-          })} />
+              pathname: '/customer/VendorDetails',
+              params: {
+                id: vendor.id,
+                name: vendor.name,
+                category: vendor.category,
+                description: vendor.description || '',
+                location: vendor.location || 'Toledo City, Cebu',
+                meetupPoint: vendor.meetupPoint || '',
+                meetupDetails: vendor.meetupDetails || '',
+                mobile: vendor.mobile || '',
+                image: typeof vendor.image === 'string' ? vendor.image : (vendor.image?.uri || ''),
+                coverImage: vendor.merchant?.cover_image ? vendor.merchant.cover_image : (typeof vendor.coverImage === 'string' ? vendor.coverImage : (vendor.coverImage?.uri || '')),
+              },
+            })} />
           ))
         ) : (
           <View style={styles.emptyContainer}><Text style={styles.emptyText}>No vendors found</Text></View>
@@ -462,55 +511,74 @@ export default function UserDashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  header: { paddingHorizontal: 20, paddingTop: 25 },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  locationContainer: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { color: COLORS.secondary, fontSize: 13, fontWeight: '700' },
-  profilePlaceholder: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.secondary, justifyContent: 'center', alignItems: 'center' },
-  profileInitial: { color: '#FFF', fontWeight: 'bold' },
-  welcomeText: { fontSize: 18, color: COLORS.secondary, fontWeight: '800', marginTop: 15 },
-  orderLabelText: { color: '#666', fontWeight: '400' },
-  mainScroll: { paddingHorizontal: 20, paddingTop: 10, flexGrow: 1 },
-  searchBar: { flexDirection: 'row', backgroundColor: '#F8F9FA', borderRadius: 15, paddingHorizontal: 15, height: 50, alignItems: 'center', marginVertical: 15 },
-  searchInput: { flex: 1, marginLeft: 10 },
-  sectionHeader: { marginTop: 10, marginBottom: 6 },
-  sectionHeaderCompact: { marginTop: 8, marginBottom: 6 },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
-  categoriesList: { marginBottom: 10 },
-  categoryCard: { alignItems: 'center', marginRight: 15 },
-  categoryIconBg: { width: 55, height: 55, borderRadius: 15, backgroundColor: '#FBFBFB', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#F0F0F0' },
-  categoryIconBgActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  categoryName: { fontSize: 11, marginTop: 5 },
-  categoryNameActive: { color: COLORS.primary, fontWeight: '700' },
-  popularScroll: { marginHorizontal: -5 },
-  popularCard: { width: CARD_WIDTH, backgroundColor: '#FFF', borderRadius: 20, marginHorizontal: 5, elevation: 3, marginBottom: 10 },
-  popularItemImg: { width: '100%', height: 110, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  popularCardContent: { padding: 10 },
-  popularItemName: { fontSize: 14, fontWeight: '800' },
-  popularItemDesc: { fontSize: 10, color: '#AAA' },
-  popularItemPrice: { fontSize: 15, fontWeight: '900', color: COLORS.primary },
-  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
-  addToCartSmallBtn: { backgroundColor: COLORS.secondary, width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', alignSelf: 'flex-end' },
-  vendorCardVertical: { backgroundColor: '#FFF', borderRadius: 20, marginBottom: 20, elevation: 3, overflow: 'hidden' },
-  vendorLargeImage: { width: '100%', height: 140 },
-  ratingBadgeFloating: { position: 'absolute', top: 10, right: 10, backgroundColor: '#FFF', padding: 5, borderRadius: 10, flexDirection: 'row', alignItems: 'center' },
-  ratingBadgeText: { fontSize: 12, fontWeight: '800', marginLeft: 3 },
-  vendorInfoContent: { padding: 12 },
-  vendorTitleRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  vendorNameLarge: { fontSize: 18, fontWeight: '800' },
-  vendorPriceRange: { color: '#AAA' },
-  vendorCategorySubtitle: { color: COLORS.primary, fontSize: 12, fontWeight: '600', marginTop: 4 },
-  vendorDescription: { fontSize: 12, color: '#666', marginTop: 6, lineHeight: 16 },
-  vendorMetaRow: { flexDirection: 'column', gap: 8, marginTop: 8 },
-  metaItemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaText: { fontSize: 12, color: '#666', flexShrink: 1 },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  mainScroll: { paddingHorizontal: 20, paddingTop: 20, flexGrow: 1 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  timeText: { fontSize: 16, color: '#1E293B', fontWeight: '700' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  locationText: { color: '#C2410C', fontSize: 13, fontWeight: '700' },
+  profileButton: { width: 50, height: 50, borderRadius: 18, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8 },
+  profileAvatar: { width: 44, height: 44, borderRadius: 22 },
+  profilePlaceholder: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#7C2D12', justifyContent: 'center', alignItems: 'center' },
+  profileInitial: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+  heroCard: { borderRadius: 28, padding: 22, overflow: 'hidden', marginBottom: 20, position: 'relative', shadowColor: '#C2410C', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 14, elevation: 8 },
+  heroLabel: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 14, marginBottom: 10 },
+  heroLabelText: { color: '#FFF', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  heroTitle: { color: '#FFF', fontSize: 26, fontWeight: '900', lineHeight: 32, maxWidth: '75%', marginBottom: 6 },
+  heroSubtitle: { color: '#FFEDD5', fontSize: 13, marginBottom: 16, maxWidth: '80%', lineHeight: 18 },
+  heroFeatureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2, flexWrap: 'wrap', gap: 8 },
+  heroFeatureChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignSelf: 'flex-start', gap: 6, minHeight: 34, shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 2 },
+  heroFeatureChipSecondary: { backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  heroFeatureChipText: { color: '#7C2D12', fontSize: 12, fontWeight: '700' },
+  heroFeatureChipTextSecondary: { color: '#FFF' },
+  searchSection: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 22 },
+  searchBar: { flex: 1, flexDirection: 'row', backgroundColor: '#F8FAFC', borderRadius: 16, paddingHorizontal: 16, height: 50, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.02, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 1 },
+  searchInput: { flex: 1, marginLeft: 10, color: '#1E293B', fontSize: 14 },
+  filterButton: { width: 50, height: 50, borderRadius: 16, overflow: 'hidden', elevation: 3, shadowColor: '#C2410C', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, shadowRadius: 6 },
+  filterBtnGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  sectionHeaderCompact: { marginBottom: 10, marginTop: 4 },
+  sectionTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  sectionAction: { fontSize: 13, color: '#C2410C', fontWeight: '700' },
+  categoriesList: { marginBottom: 20 },
+  categoriesListContent: { paddingRight: 20 },
+  categoryCard: { alignItems: 'center', marginRight: 16 },
+  categoryCardActive: { opacity: 1 },
+  categoryIconBg: { width: 62, height: 62, borderRadius: 20, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOpacity: 0.03, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 1 },
+  categoryIconBgActive: { backgroundColor: '#C2410C', borderColor: '#C2410C', shadowColor: '#C2410C', shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  categoryName: { fontSize: 12, marginTop: 8, color: '#64748B', fontWeight: '600' },
+  categoryNameActive: { color: '#1E293B', fontWeight: '800' },
+  dealScroll: { marginBottom: 20 },
+  dealScrollContent: { paddingRight: 20 },
+  dealCard: { width: 210, marginRight: 14 },
+  popularCard: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 20, marginBottom: 10, elevation: 3, shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
+  popularItemImg: { width: '100%', height: 120, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  popularCardContent: { padding: 14 },
+  popularItemName: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
+  popularItemDesc: { fontSize: 11, color: '#64748B', marginTop: 4 },
+  popularItemPrice: { fontSize: 15, fontWeight: '900', color: '#C2410C' },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  addToCartSmallBtn: { width: 28, height: 28, borderRadius: 8, overflow: 'hidden', alignSelf: 'flex-end' },
+  btnMiniGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  vendorCardVertical: { backgroundColor: '#FFFFFF', borderRadius: 24, marginBottom: 20, elevation: 4, shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9', borderLeftWidth: 5, borderLeftColor: '#C2410C' },
+  vendorImageWrapper: { position: 'relative', width: '100%', height: 160, backgroundColor: '#F8FAFC' },
+  vendorLargeImage: { width: '100%', height: '100%' },
+  imageOverlayGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60 },
+  ratingBadgeFloating: { position: 'absolute', top: 12, right: 12, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 2 },
+  ratingBadgeText: { fontSize: 12, fontWeight: '800', marginLeft: 4, color: '#1E293B' },
+  vendorInfoContent: { padding: 18, backgroundColor: '#FFFFFF', borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  vendorTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  vendorNameLarge: { fontSize: 17, fontWeight: '800', color: '#1E293B', flexShrink: 1 },
+  vendorPriceRange: { color: '#64748B', fontWeight: '700', fontSize: 13 },
+  vendorCategorySubtitle: { color: '#C2410C', fontSize: 11, fontWeight: '700', marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.5 },
+  vendorDescription: { fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 18 },
+  vendorMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, gap: 10 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 },
+  metaText: { fontSize: 11, color: '#64748B', flexShrink: 1, fontWeight: '500' },
   emptyContainer: { padding: 20, alignItems: 'center' },
-  emptyText: { color: '#AAA' }
-  ,
+  emptyText: { color: '#94A3B8', fontSize: 14 },
   welcomeOverlay: { position: 'absolute', left: 20, right: 20, top: 80, alignItems: 'center', zIndex: 9999 },
-  welcomeCard: { backgroundColor: '#FFF', padding: 14, borderRadius: 12, elevation: 6, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, width: '100%', alignItems: 'center' },
-  welcomeCardTitle: { fontSize: 18, fontWeight: '900', color: COLORS.secondary },
-  welcomeCardSubtitle: { marginTop: 6, color: '#666', textAlign: 'center' }
+  welcomeCard: { backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, elevation: 6, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
+  welcomeCardTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B' },
+  welcomeCardSubtitle: { marginTop: 6, color: '#64748B', textAlign: 'center', fontSize: 13 }
 });

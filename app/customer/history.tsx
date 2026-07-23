@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../styles/globalStyles';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
@@ -79,15 +80,21 @@ export default function OrderHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
-      <View style={styles.whiteHeader}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerLeftAction}>
-          <Feather name="arrow-left" size={22} color="#4A342E" />
+      <StatusBar barStyle="light-content" backgroundColor="#451A03" />
+
+      {/* Styled Header matching Warm Gradient Theme */}
+      <LinearGradient
+        colors={['#451A03', '#7C2D12', '#C2410C']}
+        style={styles.gradientHeader}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.headerLeftAction} activeOpacity={0.8}>
+          <Feather name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleText}>Order History</Text>
-        </View>
-      </View>
+        <Text style={styles.headerTitleText}>Order History</Text>
+        <View style={styles.headerRightSpacer} />
+      </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {historyOrders.length > 0 ? historyOrders.map((order: any) => (
@@ -97,8 +104,8 @@ export default function OrderHistoryScreen() {
                 <Text style={styles.orderDate}>{order.date || 'Today'}</Text>
                 <Text style={styles.vendorName}>{order.vendorName || 'Toledo Vendor'}</Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: order.status === 'Completed' ? '#E8F5E9' : '#FFF3E0' }]}>
-                <Text style={[styles.statusText, { color: order.status === 'Completed' ? '#2E7D32' : '#EF6C00' }]}>{order.status || 'Pending'}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: order.status === 'Completed' ? '#DCFCE7' : '#FFEDD5' }]}>
+                <Text style={[styles.statusText, { color: order.status === 'Completed' ? '#166534' : '#C2410C' }]}>{order.status || 'Pending'}</Text>
               </View>
             </View>
             <Text style={styles.itemDetails}>{(order.items?.length || 0)} items • ₱{Number(order.total || 0).toFixed(2)}</Text>
@@ -108,7 +115,7 @@ export default function OrderHistoryScreen() {
           </TouchableOpacity>
         )) : (
           <View style={styles.emptyState}>
-            <Feather name="clock" size={48} color="#D1D5DB" />
+            <Feather name="clock" size={48} color="#94A3B8" />
             <Text style={styles.emptyTitle}>No history yet</Text>
             <Text style={styles.emptySubtitle}>Completed and past orders will appear here.</Text>
           </View>
@@ -118,8 +125,8 @@ export default function OrderHistoryScreen() {
       <Modal visible={qrModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setQrModalVisible(false)}>
-              <Feather name="x" size={22} color="#4A342E" />
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setQrModalVisible(false)} activeOpacity={0.8}>
+              <Feather name="x" size={22} color="#1E293B" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Order QR</Text>
             <Text style={styles.modalSubtitle}>Show this to the merchant when you pick up your order.</Text>
@@ -130,8 +137,14 @@ export default function OrderHistoryScreen() {
             </View>
             <Text style={styles.modalVendor}>{selectedOrder?.vendorName || 'Toledo Vendor'}</Text>
             <Text style={styles.modalReference}>REF: #{String(selectedOrder?.id || '').slice(-8).toUpperCase()}</Text>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setQrModalVisible(false)}>
-              <Text style={styles.modalCloseText}>Close</Text>
+            
+            <TouchableOpacity activeOpacity={0.8} style={{ width: '100%' }} onPress={() => setQrModalVisible(false)}>
+              <LinearGradient
+                colors={['#C2410C', '#9A3412']}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -141,41 +154,115 @@ export default function OrderHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FBFC' },
-  whiteHeader: {
-    height: 60,
-    backgroundColor: '#FFF',
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  
+  gradientHeader: {
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderColor: '#F0F0F0',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     marginTop: Platform.OS === 'android' ? 20 : 0,
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  headerTitleContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerTitleText: { fontSize: 18, fontWeight: '800', color: '#4A342E' },
-  headerLeftAction: { padding: 8 },
+  headerTitleText: { 
+    fontSize: 18, 
+    fontWeight: '900', 
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  headerLeftAction: { 
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  headerRightSpacer: {
+    width: 36,
+  },
+
   scrollContent: { padding: 20, paddingBottom: 100 },
-  orderCard: { backgroundColor: '#FFF', borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F0F0F0' },
+  
+  orderCard: { 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 24, 
+    padding: 18, 
+    marginBottom: 16, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9',
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.08, 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowRadius: 12, 
+    elevation: 3 
+  },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  orderDate: { fontSize: 12, color: '#A8A8A8', fontWeight: '600' },
-  vendorName: { fontSize: 15, fontWeight: '800', color: '#4A342E', marginTop: 4 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  statusText: { fontSize: 11, fontWeight: '800' },
-  itemDetails: { fontSize: 13, color: '#777', marginTop: 8 },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyTitle: { fontSize: 17, fontWeight: '800', color: '#4A342E', marginTop: 16 },
-  emptySubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: 6, textAlign: 'center' },
+  orderDate: { fontSize: 12, color: '#64748B', fontWeight: '700' },
+  vendorName: { fontSize: 16, fontWeight: '900', color: '#1E293B', marginTop: 4, letterSpacing: -0.3 },
+  
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  statusText: { fontSize: 12, fontWeight: '800' },
+  
+  itemDetails: { fontSize: 14, color: '#64748B', marginTop: 12, fontWeight: '600' },
+  
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginTop: 16, letterSpacing: -0.3 },
+  emptySubtitle: { fontSize: 13, color: '#64748B', marginTop: 6, textAlign: 'center', fontWeight: '600' },
+  
   actionHint: { marginTop: 12, alignItems: 'flex-start' },
-  actionHintText: { fontSize: 12, color: '#9CA3AF' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 22, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 18, elevation: 12 },
-  closeModalBtn: { position: 'absolute', top: 16, right: 16, zIndex: 10 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#4A342E', marginBottom: 8 },
-  modalSubtitle: { fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 18 },
-  qrHolder: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 20, marginBottom: 18 },
-  modalVendor: { fontSize: 16, fontWeight: '700', color: '#4A342E', marginBottom: 6 },
-  modalReference: { fontSize: 14, color: '#6B7280', marginBottom: 18 },
-  modalCloseBtn: { width: '100%', paddingVertical: 14, backgroundColor: COLORS.primary, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  modalCloseText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  actionHintText: { fontSize: 12, color: '#C2410C', fontWeight: '700' },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalCard: { 
+    width: '100%', 
+    maxWidth: 360, 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 28, 
+    padding: 24, 
+    alignItems: 'center', 
+    shadowColor: '#C2410C', 
+    shadowOpacity: 0.2, 
+    shadowRadius: 20, 
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  closeModalBtn: { position: 'absolute', top: 18, right: 18, zIndex: 10, padding: 4 },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B', marginBottom: 6, letterSpacing: -0.3 },
+  modalSubtitle: { fontSize: 13, color: '#64748B', textAlign: 'center', marginBottom: 20, fontWeight: '600', lineHeight: 18 },
+  
+  qrHolder: { 
+    width: 210, 
+    height: 210, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 24, 
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2
+  },
+  
+  modalVendor: { fontSize: 17, fontWeight: '900', color: '#1E293B', marginBottom: 4 },
+  modalReference: { fontSize: 13, color: '#64748B', marginBottom: 20, fontWeight: '700', letterSpacing: 0.5 },
+  
+  modalCloseBtn: { 
+    paddingVertical: 16, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    width: '100%',
+    shadowColor: '#C2410C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalCloseText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });

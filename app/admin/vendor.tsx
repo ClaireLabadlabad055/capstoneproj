@@ -8,12 +8,11 @@ import {
   TextInput, 
   SafeAreaView, 
   StatusBar, 
-  Platform,
   Alert 
 } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { COLORS, SHADOWS } from '../../styles/globalStyles';
+import GradientHeader from '../_components/GradientHeader';
 import { supabase } from '../../lib/supabaseClient';
 
 const getVendorStatus = (item: any) => {
@@ -100,21 +99,22 @@ export default function ManageVendors() {
     );
   };
 
-const renderVendorCard = ({ item }: { item: any }) => {
+  const renderVendorCard = ({ item }: { item: any }) => {
     const name = item.business_name || item.full_name || 'Unnamed Vendor';
     const status = getVendorStatus(item);
     const category = item.delicacy_type || item.category || 'No category';
     const joined = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown';
 
     return (
-      <View style={[styles.vendorCard, SHADOWS?.small]}>
+      <View style={styles.vendorCard}>
         <View style={styles.cardHeader}>
           <View style={styles.infoGroup}>
-            <Text style={styles.vendorName}>{name}</Text>
-            <Text style={styles.categoryTag}>{category} • Joined {joined}</Text>
+            <Text style={styles.vendorName} numberOfLines={1}>{name}</Text>
+            <Text style={styles.categoryTag} numberOfLines={1}>{category} • Joined {joined}</Text>
           </View>
           <View style={[styles.statusBadge, { 
-            backgroundColor: status === 'Active' ? '#DCFCE7' : status === 'Pending' ? '#FEF3C7' : '#FEE2E2' 
+            backgroundColor: status === 'Active' ? '#DCFCE7' : status === 'Pending' ? '#FEF3C7' : '#FEE2E2',
+            borderColor: status === 'Active' ? '#BBF7D0' : status === 'Pending' ? '#FDE68A' : '#FECACA'
           }]}> 
             <Text style={[styles.statusText, { 
               color: status === 'Active' ? '#15803D' : status === 'Pending' ? '#B45309' : '#B91C1C' 
@@ -125,27 +125,29 @@ const renderVendorCard = ({ item }: { item: any }) => {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Pickup</Text>
-            <Text style={styles.statValue}>{item.pickup_landmark || 'No pickup info'}</Text>
+            <Text style={styles.statValue} numberOfLines={1}>{item.pickup_landmark || 'No pickup info'}</Text>
           </View>
           <View style={styles.actionGroup}>
-           <TouchableOpacity 
-              style={[styles.iconBtn, { backgroundColor: '#F1F5F9' }]}
+            <TouchableOpacity 
+              style={styles.iconBtn}
               onPress={() => router.push({
                 pathname: '/admin/vendor-details',
                 params: { id: item.id, name }
               })}
+              activeOpacity={0.8}
             >
-              <Feather name="eye" size={18} color="#64748B" />
+              <Feather name="eye" size={16} color="#C2410C" />
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.iconBtn, { backgroundColor: status === 'Active' ? '#FFF1F1' : '#F0FDF4' }]}
+              style={[styles.iconBtn, { backgroundColor: status === 'Active' ? '#FEF2F2' : '#F0FDF4', borderColor: status === 'Active' ? '#FECACA' : '#BBF7D0' }]}
               onPress={() => handleToggleStatus(item.id, status)}
+              activeOpacity={0.8}
             >
               <Feather 
                 name={status === 'Active' ? "slash" : "check-circle"} 
-                size={18} 
-                color={status === 'Active' ? "#EF4444" : "#22C55E"} 
+                size={16} 
+                color={status === 'Active' ? "#EF4444" : "#16A34A"} 
               />
             </TouchableOpacity>
           </View>
@@ -156,23 +158,30 @@ const renderVendorCard = ({ item }: { item: any }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" backgroundColor="#C2410C" />
       
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={24} color="#1E293B" />
-        </TouchableOpacity>
+      <GradientHeader
+        colors={['#C2410C', '#9A3412', '#7C2D12']}
+        titleContainerStyle={{ alignItems: 'flex-start', justifyContent: 'center' }}
+        leftAction={
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+            <Feather name="arrow-left" size={20} color="#C2410C" />
+          </TouchableOpacity>
+        }
+        rightAction={
+          <TouchableOpacity style={styles.addBtn} activeOpacity={0.8}>
+            <Feather name="plus" size={18} color="#C2410C" />
+          </TouchableOpacity>
+        }
+      >
         <Text style={styles.headerTitle}>Manage Vendors</Text>
-        <TouchableOpacity style={styles.addBtn}>
-          <Feather name="plus" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchWrapper}>
-          <Feather name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
+          <Feather name="search" size={16} color="#94A3B8" style={styles.searchIcon} />
           <TextInput 
             style={styles.searchInput}
             placeholder="Search by store name..."
@@ -186,13 +195,17 @@ const renderVendorCard = ({ item }: { item: any }) => {
       {/* Vendor List */}
       <FlatList 
         data={filteredVendors}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
         renderItem={renderVendorCard}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="store-off-outline" size={60} color="#CBD5E1" />
-            <Text style={styles.emptyText}>No vendors found</Text>
+            <View style={styles.checkCircle}>
+              <MaterialCommunityIcons name="store-off-outline" size={36} color="#C2410C" />
+            </View>
+            <Text style={styles.emptyTitle}>No vendors found</Text>
+            <Text style={styles.emptySub}>Vendors registered in the application will show up here.</Text>
           </View>
         }
       />
@@ -202,63 +215,72 @@ const renderVendorCard = ({ item }: { item: any }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingVertical: 15,
-    backgroundColor: '#FFF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 10
-  },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B' },
-  backBtn: { padding: 8 },
-  addBtn: { padding: 8 },
+  backBtn: { backgroundColor: '#FFEDD5', padding: 8, borderRadius: 14, borderWidth: 1, borderColor: '#FED7AA', marginRight: 10 },
+  addBtn: { backgroundColor: '#FFEDD5', padding: 9, borderRadius: 14, borderWidth: 1, borderColor: '#FED7AA' },
+  headerTitle: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
 
-  searchContainer: { padding: 20, backgroundColor: '#FFF' },
+  searchContainer: { paddingHorizontal: 20, paddingVertical: 14, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   searchWrapper: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#F1F5F9', 
-    borderRadius: 15, 
-    paddingHorizontal: 15 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 16, 
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    height: 48
   },
-  searchIcon: { marginRight: 10 },
-  searchInput: { flex: 1, height: 50, fontSize: 15, color: '#1E293B', fontWeight: '600' },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, height: '100%', fontSize: 14, color: '#1E293B', fontWeight: '700' },
 
-  listContent: { padding: 20 },
+  listContent: { padding: 20, paddingBottom: 100 },
   vendorCard: { 
     backgroundColor: '#FFF', 
-    borderRadius: 24, 
-    padding: 20, 
-    marginBottom: 16,
+    borderRadius: 20, 
+    padding: 18, 
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#F1F5F9'
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  infoGroup: { flex: 1 },
-  vendorName: { fontSize: 17, fontWeight: '900', color: '#1E293B' },
-  categoryTag: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 4 },
+  infoGroup: { flex: 1, marginRight: 10 },
+  vendorName: { fontSize: 16, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  categoryTag: { fontSize: 12, color: '#64748B', fontWeight: '600', marginTop: 3 },
   
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1 },
+  statusText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
 
   statsRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginTop: 20, 
-    paddingTop: 15, 
+    marginTop: 14, 
+    paddingTop: 12, 
     borderTopWidth: 1, 
     borderTopColor: '#F8FAFC' 
   },
-  statItem: { flexDirection: 'column' },
-  statLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase' },
-  statValue: { fontSize: 16, fontWeight: '900', color: '#1E293B', marginTop: 2 },
+  statItem: { flex: 1, marginRight: 10 },
+  statLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  statValue: { fontSize: 13, fontWeight: '900', color: '#1E293B', marginTop: 2 },
 
-  actionGroup: { flexDirection: 'row', gap: 10 },
-  iconBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  actionGroup: { flexDirection: 'row', gap: 8 },
+  iconBtn: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 12, 
+    backgroundColor: '#FFEDD5', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FED7AA'
+  },
 
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
-  emptyText: { fontSize: 16, color: '#94A3B8', fontWeight: '600', marginTop: 10 }
+  emptyContainer: { alignItems: 'center', marginTop: 80, paddingHorizontal: 40 },
+  checkCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: '#FED7AA' },
+  emptyTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', textAlign: 'center', letterSpacing: -0.3 },
+  emptySub: { fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 6, lineHeight: 18, fontWeight: '600' }
 });
