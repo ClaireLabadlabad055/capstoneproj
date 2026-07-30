@@ -421,6 +421,12 @@ export default function VendorDashboard() {
             </View>
             <Text style={styles.toolText}>Order History</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.toolItem} activeOpacity={0.9} onPress={() => router.push('/vendor/messages')}>
+            <View style={styles.toolIcon}>
+              <Feather name="message-circle" size={22} color="#C2410C" />
+            </View>
+            <Text style={styles.toolText}>Messages</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>Live Queue</Text>

@@ -30,8 +30,48 @@ export const CartProvider = ({ children }) => {
     }
   }, [userData]);
 
+  // Fetch latest avatar_url from profiles table and sync into local userProfile
+  useEffect(() => {
+    const fetchAvatar = async () => {
+      const userId = user?.id || userData?.id;
+      if (!userId) return;
+      try {
+        const { data, error } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle();
+        if (!error && data?.avatar_url) {
+          setUserProfile((prev) => ({ ...prev, profileImage: data.avatar_url }));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch profile avatar:', e);
+      }
+    };
+
+    fetchAvatar();
+  }, [user?.id, userData?.id]);
+
   // --- Helper Functions ---
   const updateProfile = (updates) => setUserProfile((prev) => ({ ...prev, ...updates }));
+
+  const syncCustomerProfile = async () => {
+    const userId = user?.id || userData?.id;
+    if (!userId) return;
+
+    const profilePayload = {
+      id: userId,
+      full_name: userProfile.name,
+      email: userProfile.email,
+      phone: userProfile.phone,
+      avatar_url: userProfile.profileImage,
+      address: userProfile.address,
+    };
+
+    try {
+      await supabase.from('customers').upsert([profilePayload]);
+      await supabase.from('profiles').upsert([profilePayload]);
+    } catch (e) {
+      console.warn('Customer profile sync failed:', e);
+    }
+  };
+
   const addToCart = (product) => {
     setCartItems((prev) => {
       // Normalize image fields to ensure cart always contains usable src
@@ -93,22 +133,10 @@ export const CartProvider = ({ children }) => {
     const serviceFee = Number((subtotal * SERVICE_FEE_RATE).toFixed(2));
     const total = Number((subtotal + serviceFee).toFixed(2));
 
-    // Parent order record that OrderSuccess expects to find by id
     const vendorNames = Array.from(new Set((cartItems || []).map((item) => String(item.vendorName || 'Unknown'))));
-
-    // Determine seller-provided pickup point (prefer first vendor's merchant setting)
-    let sellerPickup = null;
     const vendorId = cartItems?.[0]?.vendorId || cartItems?.[0]?.vendor_id || null;
-    if (vendorId) {
-      try {
-        const { data: merchant } = await supabase.from('merchants').select('pickup_landmark').eq('id', vendorId).maybeSingle();
-        if (merchant) sellerPickup = merchant.pickup_landmark || null;
-      } catch (e) {
-        // ignore and fallback to provided pickupPointId
-      }
-    }
 
-    // Ensure we persist a sensible vendor_name: prefer vendorName from cart, otherwise resolve merchant name by vendorId
+    // Ensure we persist a sensible vendor_name
     let resolvedVendorName = vendorNames[0] || 'Vendor';
     if ((!resolvedVendorName || resolvedVendorName === 'Vendor' || resolvedVendorName === 'Independent Vendor') && vendorId) {
       try {
@@ -126,14 +154,20 @@ export const CartProvider = ({ children }) => {
         : (firstItem.vendor_name || firstItem.vendorName || 'Unknown Vendor');
     }
 
+    // Embed paymentMethod safely inside the items JSON array so merchants can see it
+    const itemsWithPayment = cartItems.map(item => ({
+      ...item,
+      paymentMethod,
+    }));
+
     const orderPayload = {
       id: checkoutId,
       user_id: userData?.id || null,
-      items: cartItems,
+      items: itemsWithPayment,
       subtotal,
       serviceFee,
       total,
-      pickup_point_id: sellerPickup || pickupPointId || null,
+      pickup_point_id: pickupPointId || null, // ✅ Uses the exact chosen dropdown selection directly
       status: paymentMethod === 'GCash' ? 'Awaiting Payment' : 'Preparing',
       paymentMethod,
       customer_name: userProfile.name,
@@ -141,12 +175,13 @@ export const CartProvider = ({ children }) => {
       vendor_name: resolvedVendorName,
       vendorName: resolvedVendorName,
       vendor_id: vendorId || firstItem.vendorId || null,
-      order_details: cartItems,
+      order_details: itemsWithPayment,
       created_at: now.toISOString(),
     };
 
     try {
-      // Only include columns that exist in the DB schema (snake_case).
+      await syncCustomerProfile();
+
       const itemCount = (orderPayload.items || []).reduce((s, it) => s + (Number(it.qty || 1) || 0), 0);
 
       const insertPayload = {
@@ -154,7 +189,7 @@ export const CartProvider = ({ children }) => {
         user_id: user?.id || orderPayload.user_id,
         items: orderPayload.items,
         total: orderPayload.total,
-        pickup_point_id: orderPayload.pickup_point_id,
+        pickup_point_id: orderPayload.pickup_point_id, // ✅ Writes exact dropdown selection straight to Supabase
         status: orderPayload.status,
         customer_name: orderPayload.customer_name,
         vendor_name: orderPayload.vendor_name || orderPayload.vendorName || 'Unknown Vendor',
@@ -164,22 +199,43 @@ export const CartProvider = ({ children }) => {
         created_at: orderPayload.created_at,
       };
 
-      console.log('Placing order; vendorNames:', vendorNames, 'vendorId:', vendorId);
+      console.log('Placing order; pickupPointId:', pickupPointId);
       console.log('Insert payload:', insertPayload);
+      
       const { data: inserted, error: insertError } = await supabase.from('orders').insert([insertPayload]).select();
+      
       if (insertError) {
         console.error('Failed to persist order:', insertError);
-        // Return explicit error information for the caller and keep a local copy
         setOrders((prev) => [{ ...orderPayload, persisted: false, error: insertError }, ...prev]);
         setCartItems([]);
         return { checkoutId, success: false, error: insertError };
       }
-      console.log('Insert result:', inserted);
-
-      // inserted should contain the row we just created
-      setOrders((prev) => [{ ...orderPayload, persisted: true, dbRow: inserted?.[0] || null }, ...prev]);
+      
+      const savedOrder = inserted?.[0] || null;
+      setOrders((prev) => [{ ...orderPayload, persisted: true, dbRow: savedOrder }, ...prev]);
       setCartItems([]);
-      return { checkoutId, success: true, inserted: inserted?.[0] || null };
+
+      if (savedOrder && savedOrder.vendor_id && (user?.id || orderPayload.user_id)) {
+        const customerId = user?.id || orderPayload.user_id;
+        const customerName = userProfile.name || userData?.full_name || 'Customer';
+        const pickupText = (typeof pickupPointId === 'string')
+          ? pickupPointId
+          : (pickupPointId && (pickupPointId.label || pickupPointId.name || String(pickupPointId))) || '';
+        const pickupMessage = `Order ${checkoutId} is confirmed. Please schedule your pickup at ${pickupText || 'your selected location'}. Payment method: ${paymentMethod}. Reply here when you're ready to confirm your pickup time.`;
+
+        await supabase.from('messages').insert([
+          {
+            conversation_id: `vendor:${savedOrder.vendor_id}`,
+            sender_id: savedOrder.vendor_id,
+            receiver_id: customerId,
+            sender_name: resolvedVendorName,
+            receiver_name: customerName,
+            content: pickupMessage,
+          },
+        ]);
+      }
+
+      return { checkoutId, success: true, inserted: savedOrder };
     } catch (e) {
       console.error('Order insert exception:', e);
       setOrders((prev) => [{ ...orderPayload, persisted: false, error: e }, ...prev]);

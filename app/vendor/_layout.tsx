@@ -53,7 +53,15 @@ export default function VendorLayout() {
         }} 
       />
 
-      
+      <Stack.Screen 
+        name="messages" 
+        options={{
+          presentation: 'card',
+          headerTitle: 'Customer Messages',
+          headerShown: false
+        }} 
+      />
+
     </Stack>
   );
 }
