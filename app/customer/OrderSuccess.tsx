@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator, Animated, Platform } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router'; 
-import QRCode from 'react-native-qrcode-svg';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabaseClient';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useCart } from '../../context/CartContext';
+import { supabase } from '../../lib/supabaseClient';
 
 export default function OrderSuccess() {
   const router = useRouter();
   const { checkoutId, paymentMethod: routePaymentMethod } = useLocalSearchParams(); 
   const [order, setOrder] = useState<any>(null);
   const [pickupName, setPickupName] = useState<string>('Loading...');
+  const [pickupSlot, setPickupSlot] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>(String(routePaymentMethod || 'COD'));
   const [loading, setLoading] = useState(true);
   const anim = useRef(new Animated.Value(0)).current;
@@ -30,11 +31,18 @@ export default function OrderSuccess() {
 
       if (orderData) {
         setOrder(orderData);
+        // Extract slot if it exists in the order record (e.g. pickup_slot, slot, or time_slot)
+        const slotValue = orderData.pickup_slot || orderData.slot || orderData.time_slot;
+        if (slotValue) {
+          setPickupSlot(String(slotValue));
+        }
       } else {
         if (fetchError) console.warn('Order fetch error:', fetchError);
         const local = orders.find((o: any) => String(o.id) === String(checkoutId));
         if (local) {
           setOrder(local);
+          const localSlot = local.pickup_slot || local.slot || local.time_slot;
+          if (localSlot) setPickupSlot(String(localSlot));
         } else {
           setOrder({ id: checkoutId, total: 0, pickup_point_id: null, paymentMethod: paymentMethod });
         }
@@ -130,6 +138,14 @@ export default function OrderSuccess() {
                 <Text style={styles.label}>Pick-up Point</Text>
                 <Text style={styles.value}>{pickupName}</Text>
               </View>
+
+              {pickupSlot && (
+                <View style={[styles.infoRow, styles.slotRow]}>
+                  <Text style={styles.subLabel}>• Pick-up Slot</Text>
+                  <Text style={styles.subValue}>{pickupSlot}</Text>
+                </View>
+              )}
+
               {paymentMethod === 'GCash' && (
                 <View style={styles.infoRow}>
                   <Text style={styles.label}>Payment</Text>
@@ -155,8 +171,10 @@ export default function OrderSuccess() {
                   colors={['#C2410C', '#9A3412']}
                   style={styles.messageBtn}
                 >
-                  <Feather name="message-circle" size={16} color="#FFF" />
-                  <Text style={styles.messageBtnText}>Message Vendor</Text>
+                  <View style={styles.messageBtnContent}>
+                    <Feather name="message-circle" size={16} color="#FFF" />
+                    <Text style={styles.messageBtnText}>Message Vendor</Text>
+                  </View>
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -255,8 +273,11 @@ const styles = StyleSheet.create({
   
   infoSection: { width: '100%', borderTopWidth: 1, borderColor: '#F1F5F9', paddingTop: 20 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  slotRow: { marginTop: -4, marginBottom: 14, paddingLeft: 8 },
   label: { fontSize: 14, color: '#64748B', fontWeight: '600' },
   value: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
+  subLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  subValue: { fontSize: 13, fontWeight: '700', color: '#C2410C' },
   
   noticeBox: { 
     width: '100%', 
@@ -272,12 +293,6 @@ const styles = StyleSheet.create({
   
   messageBtn: { 
     marginTop: 18, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 8, 
-    paddingVertical: 14, 
-    paddingHorizontal: 28, 
     borderRadius: 18,
     width: '100%',
     shadowColor: '#C2410C',
@@ -285,6 +300,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 4,
+  },
+  messageBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    gap: 8,
+    width: '100%',
   },
   messageBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   

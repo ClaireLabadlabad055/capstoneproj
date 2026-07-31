@@ -1,12 +1,55 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, Dimensions, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect } from 'react';
+import { Dimensions, Image, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { 
+  FadeIn, 
+  FadeInDown, 
+  FadeInUp, 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withRepeat, 
+  withTiming, 
+  Easing 
+} from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 
 export default function LandingPage() {
   const router = useRouter();
+
+  // Floating background glow animations
+  const glowTopAnim = useSharedValue(0);
+  const glowBottomAnim = useSharedValue(0);
+
+  useEffect(() => {
+    glowTopAnim.value = withRepeat(
+      withTiming(1, { duration: 6000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+    glowBottomAnim.value = withRepeat(
+      withTiming(1, { duration: 7000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, []);
+
+  const topGlowStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: 1 + glowTopAnim.value * 0.15 },
+      { translateY: glowTopAnim.value * 15 }
+    ],
+    opacity: 0.07 + glowTopAnim.value * 0.05,
+  }));
+
+  const bottomGlowStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: 1 + glowBottomAnim.value * 0.12 },
+      { translateX: glowBottomAnim.value * -15 }
+    ],
+    opacity: 0.15 + glowBottomAnim.value * 0.08,
+  }));
 
   return (
     <View style={styles.container}>
@@ -20,26 +63,32 @@ export default function LandingPage() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Decorative Modern Glowing Backdrop Elements */}
-        <View style={styles.glowCircleTop} />
-        <View style={styles.glowCircleBottom} />
+        {/* Decorative Modern Glowing Animated Backdrop Elements */}
+        <Animated.View style={[styles.glowCircleTop, topGlowStyle]} />
+        <Animated.View style={[styles.glowCircleBottom, bottomGlowStyle]} />
 
         <SafeAreaView style={{ flex: 1 }}>
           <View style={styles.contentWrapper}>
             
             {/* Top Glassmorphic Badge Header */}
-            <View style={styles.topHeader}>
+            <Animated.View 
+              entering={FadeInDown.delay(200).duration(800).springify()} 
+              style={styles.topHeader}
+            >
               <View style={styles.glassBadge}>
                 <View style={styles.badgePulse} />
                 <Text style={styles.badgeText}>Toledo City's Official Market</Text>
               </View>
-            </View>
+            </Animated.View>
 
             {/* 🎯 CENTERED HERO SECTION */}
             <View style={styles.centerContent}>
               
               {/* Extra Layered Glass Logo Card */}
-              <View style={styles.logoOuterGlow}>
+              <Animated.View 
+                entering={FadeInDown.delay(400).duration(800).springify()}
+                style={styles.logoOuterGlow}
+              >
                 <View style={styles.logoWrapper}>
                   <Image 
                     source={require('../assets/images/logo.png')} 
@@ -47,35 +96,54 @@ export default function LandingPage() {
                     resizeMode="contain"
                   />
                 </View>
-              </View>
+              </Animated.View>
 
-              <Text style={styles.appName}>ToledoGo</Text>
+              <Animated.Text 
+                entering={FadeInDown.delay(600).duration(800).springify()}
+                style={styles.appName}
+              >
+                ToledoGo
+              </Animated.Text>
 
-              <Text style={styles.tagline}>Fresh Market Delivery</Text>
+              <Animated.Text 
+                entering={FadeInDown.delay(750).duration(800).springify()}
+                style={styles.tagline}
+              >
+                An Integrated Marketplace & QR Verified Pick Up System
+              </Animated.Text>
 
-              <Text style={styles.description}>
-                Connecting you directly with trusted local vendors — fresh catch, crisp harvest, and rapid delivery right to your doorstep.
-              </Text>
+              <Animated.Text 
+                entering={FadeInDown.delay(900).duration(800).springify()}
+                style={styles.description}
+              >
+                Connecting you directly with Toledo's trusted homebased food vendors — fresh local delicacies, guaranteed safe transactions, and seamless QR-verified pick up.
+              </Animated.Text>
 
               {/* Glassmorphic Feature Pills with Icons */}
-              <View style={styles.pillContainer}>
+              <Animated.View 
+                entering={FadeInDown.delay(1050).duration(800).springify()}
+                style={styles.pillContainer}
+              >
                 <View style={styles.pill}>
                   <Text style={styles.pillIcon}>🌿</Text>
-                  <Text style={styles.pillText}>100% Fresh</Text>
+                  <Text style={styles.pillText}>100% Homebased</Text>
                 </View>
                 <View style={styles.pill}>
                   <Text style={styles.pillIcon}>🤝</Text>
                   <Text style={styles.pillText}>Local Vendors</Text>
                 </View>
                 <View style={styles.pill}>
-                  <Text style={styles.pillIcon}>⚡</Text>
-                  <Text style={styles.pillText}>Fast Delivery</Text>
+                  <Text style={styles.pillIcon}>📲</Text>
+                  <Text style={styles.pillText}>QR Verified</Text>
                 </View>
-              </View>
+              </Animated.View>
             </View>
 
             {/* BOTTOM ACTION SECTION */}
-            <View style={styles.footerSection}>
+            <Animated.View 
+              entering={FadeInUp.delay(1200).duration(800).springify()}
+              style={styles.footerSection}
+            >
               <View style={styles.actionArea}>
                 <TouchableOpacity 
                   style={styles.getStartedBtn} 
@@ -104,7 +172,7 @@ export default function LandingPage() {
               <Text style={styles.footer}>
                 © 2026 Toledo City Market • All Rights Reserved
               </Text>
-            </View>
+            </Animated.View>
 
           </View>
         </SafeAreaView>
@@ -207,48 +275,50 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4
+    textShadowRadius: 4,
   },
   tagline: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: '#FED7AA',
     textTransform: 'uppercase',
-    letterSpacing: 2,
-    marginBottom: 16
+    letterSpacing: 1.2,
+    marginBottom: 16,
+    textAlign: 'center',
+    paddingHorizontal: 10
   },
   description: { 
-    fontSize: 15, 
+    fontSize: 14, 
     color: '#FFEDD5', 
     textAlign: 'center', 
-    lineHeight: 24, 
+    lineHeight: 22, 
     paddingHorizontal: 10,
     fontWeight: '400',
-    marginBottom: 28
+    marginBottom: 24
   },
   pillContainer: { 
     flexDirection: 'row', 
     justifyContent: 'center', 
     flexWrap: 'wrap',
-    gap: 10
+    gap: 8
   },
   pill: { 
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.12)', 
-    paddingHorizontal: 14, 
-    paddingVertical: 9, 
+    paddingHorizontal: 12, 
+    paddingVertical: 8, 
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center'
   },
   pillIcon: {
-    fontSize: 13,
+    fontSize: 12,
     marginRight: 6
   },
   pillText: { 
     color: '#FFFFFF', 
-    fontSize: 12, 
+    fontSize: 11, 
     fontWeight: '600' 
   },
   footerSection: { 
@@ -297,7 +367,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)', 
     fontSize: 11,
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: 20,
     fontWeight: '500',
     letterSpacing: 0.5
   }

@@ -121,7 +121,7 @@ export const CartProvider = ({ children }) => {
   };
 
   // --- Place Order Logic ---
-  const placeOrder = async (pickupPointId, paymentMethod = 'COD') => {
+  const placeOrder = async (pickupPointId, paymentMethod = 'COD', batchSchedule = 'Batch 1') => {
     if (cartItems.length === 0) return null;
 
     const checkoutId = `CH-${Date.now().toString().slice(-6)}`;
@@ -167,8 +167,9 @@ export const CartProvider = ({ children }) => {
       subtotal,
       serviceFee,
       total,
-      pickup_point_id: pickupPointId || null, // ✅ Uses the exact chosen dropdown selection directly
-      status: paymentMethod === 'GCash' ? 'Awaiting Payment' : 'Preparing',
+      pickup_point_id: pickupPointId || null, 
+      batch_schedule: batchSchedule, // ✅ Syncs the selected batch schedule (e.g. Batch 2)
+      status: 'Pending', // Forced to Pending so vendors can review and approve it
       paymentMethod,
       customer_name: userProfile.name,
       customerName: userProfile.name,
@@ -189,7 +190,8 @@ export const CartProvider = ({ children }) => {
         user_id: user?.id || orderPayload.user_id,
         items: orderPayload.items,
         total: orderPayload.total,
-        pickup_point_id: orderPayload.pickup_point_id, // ✅ Writes exact dropdown selection straight to Supabase
+        pickup_point_id: orderPayload.pickup_point_id, 
+        batch_schedule: orderPayload.batch_schedule, // ✅ Writes exact batch choice straight to Supabase
         status: orderPayload.status,
         customer_name: orderPayload.customer_name,
         vendor_name: orderPayload.vendor_name || orderPayload.vendorName || 'Unknown Vendor',
@@ -199,7 +201,7 @@ export const CartProvider = ({ children }) => {
         created_at: orderPayload.created_at,
       };
 
-      console.log('Placing order; pickupPointId:', pickupPointId);
+      console.log('Placing order; pickupPointId:', pickupPointId, 'Batch:', batchSchedule);
       console.log('Insert payload:', insertPayload);
       
       const { data: inserted, error: insertError } = await supabase.from('orders').insert([insertPayload]).select();
@@ -221,7 +223,7 @@ export const CartProvider = ({ children }) => {
         const pickupText = (typeof pickupPointId === 'string')
           ? pickupPointId
           : (pickupPointId && (pickupPointId.label || pickupPointId.name || String(pickupPointId))) || '';
-        const pickupMessage = `Order ${checkoutId} is confirmed. Please schedule your pickup at ${pickupText || 'your selected location'}. Payment method: ${paymentMethod}. Reply here when you're ready to confirm your pickup time.`;
+        const pickupMessage = `Order ${checkoutId} is confirmed. Please schedule your pickup at ${pickupText || 'your selected location'} during ${batchSchedule}. Payment method: ${paymentMethod}. Reply here when you're ready to confirm your pickup time.`;
 
         await supabase.from('messages').insert([
           {

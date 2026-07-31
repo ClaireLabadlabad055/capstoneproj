@@ -1,14 +1,12 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert, Platform, UIManager, LayoutAnimation, Linking } from 'react-native';
-import GradientHeader from '../_components/GradientHeader';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { COLORS, SHADOWS } from '../../styles/globalStyles'; 
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, LayoutAnimation, Linking, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, UIManager, View } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useVendor } from '../../context/VendorContext';
-import { useCart } from '../../context/CartContext';
 import { supabase } from '../../lib/supabaseClient';
-import { LinearGradient } from 'expo-linear-gradient';
+import GradientHeader from '../_components/GradientHeader';
 
 // --- TYPES ---
 type OrderItem = { name: string; qty: number; price: number };
@@ -22,14 +20,34 @@ type Order = {
   customer_name?: string;
   vendorName?: string;
   user_id?: string;
+  pickupBatch?: string;
+  pickup_batch?: string;
+  pickupLandmark?: string;
+  pickup_landmark?: string;
+  pickup_point_id?: string;
+  rejection_reason?: string;
 };
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// --- HELPER TO CLEAN PICKUP LOCATION (Removes [Slot: ...] text) ---
+const cleanLocationText = (rawLocation: string) => {
+  if (!rawLocation) return 'Public Market Entrance';
+  return rawLocation.replace(/\s*\[Slot:\s*[^\]]+\]/i, '').trim();
+};
+
 // --- COLLAPSIBLE CARD COMPONENT ---
-const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatusChange: (id: string, status: string) => void }) => {
+const CollapsibleOrderCard = ({ 
+  order, 
+  onStatusChange, 
+  onRejectPress 
+}: { 
+  order: Order; 
+  onStatusChange: (id: string, status: string) => void;
+  onRejectPress: (order: Order) => void;
+}) => {
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpand = () => {
@@ -47,6 +65,25 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
     Linking.openURL(`sms:${order.customerPhone}`);
   };
 
+  const isPending = order.status === 'Pending' || order.status === 'Awaiting Acceptance';
+
+  // Determine status pill background and text colors
+  const getStatusStyle = (status: string) => {
+    switch (status) {
+      case 'Pending':
+      case 'Awaiting Acceptance':
+        return { bg: '#FEF3C7', text: '#D97706' };
+      case 'Preparing':
+        return { bg: '#FFEDD5', text: '#C2410C' };
+      case 'Ready to Meet Up':
+        return { bg: '#E0F2FE', text: '#0284C7' };
+      default:
+        return { bg: '#DCFCE7', text: '#15803D' };
+    }
+  };
+
+  const statusStyle = getStatusStyle(order.status);
+
   return (
     <View style={styles.orderCard}>
       <View style={styles.orderCardHeader}>
@@ -61,8 +98,8 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
           <TouchableOpacity onPress={handleMessage} style={styles.iconActionBtn} activeOpacity={0.8}>
             <Feather name="message-square" size={15} color="#9A3412" />
           </TouchableOpacity>
-          <View style={[styles.statusPill, { backgroundColor: order.status === 'Preparing' ? '#FFEDD5' : '#DCFCE7' }]}>
-            <Text style={[styles.statusPillText, { color: order.status === 'Preparing' ? '#C2410C' : '#15803D' }]}>{order.status}</Text>
+          <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.statusPillText, { color: statusStyle.text }]}>{order.status}</Text>
           </View>
         </View>
       </View>
@@ -81,21 +118,50 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
 
       <View style={styles.orderFooter}>
         <Text style={styles.orderTotalText}>₱{Number(order.total).toFixed(2)}</Text>
-        <TouchableOpacity 
-          style={{ width: 'auto' }}
-          activeOpacity={0.8}
-          onPress={() => onStatusChange(order.id, order.status)}
-        >
-          <LinearGradient
-            colors={order.status === 'Preparing' ? ['#C2410C', '#9A3412'] : ['#15803D', '#166534']}
-            style={styles.actionBtnGrad}
+        
+        {isPending ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity 
+              style={{ width: 'auto' }}
+              activeOpacity={0.8}
+              onPress={() => onRejectPress(order)}
+            >
+              <View style={styles.rejectBtnGrad}>
+                <Text style={styles.rejectBtnText}>Reject</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{ width: 'auto' }}
+              activeOpacity={0.8}
+              onPress={() => onStatusChange(order.id, order.status)}
+            >
+              <LinearGradient
+                colors={['#15803D', '#166534']}
+                style={styles.actionBtnGrad}
+              >
+                <Text style={styles.actionBtnText}>Accept</Text>
+                <Feather name="check" size={14} color="#FFF" style={{ marginLeft: 4 }} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={{ width: 'auto' }}
+            activeOpacity={0.8}
+            onPress={() => onStatusChange(order.id, order.status)}
           >
-            <Text style={styles.actionBtnText}>
-              {order.status === 'Completed' ? 'Completed' : order.status === 'Ready to Meet Up' ? 'Complete Order' : 'Ready to Meet Up'}
-            </Text>
-            <Feather name="check-circle" size={14} color="#FFF" style={{ marginLeft: 6 }} />
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={order.status === 'Preparing' ? ['#0284C7', '#0369A1'] : ['#15803D', '#166534']}
+              style={styles.actionBtnGrad}
+            >
+              <Text style={styles.actionBtnText}>
+                {order.status === 'Completed' ? 'Completed' : order.status === 'Ready to Meet Up' ? 'Complete Order' : 'Ready to Meet Up'}
+              </Text>
+              <Feather name="check-circle" size={14} color="#FFF" style={{ marginLeft: 6 }} />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -103,18 +169,22 @@ const CollapsibleOrderCard = ({ order, onStatusChange }: { order: Order; onStatu
 
 export default function VendorDashboard() {
   const router = useRouter();
-  const { user, userData, signOut } = useAuth(); // Included signOut if available in your context
+  const { user, userData, signOut } = useAuth();
   const { vendorProfile } = useVendor();
   const [orders, setOrders] = useState<Order[]>([]);
   const [liveApprovalStatus, setLiveApprovalStatus] = useState<string>('');
   const [fetchedMerchantName, setFetchedMerchantName] = useState<string>('');
+
+  // Rejection modal states
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [selectedOrderToReject, setSelectedOrderToReject] = useState<Order | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   const fetchMerchantDetails = useCallback(async () => {
     const activeVendorId = vendorProfile?.id || user?.id;
     if (!activeVendorId) return;
 
     try {
-      // Fetch specifically from merchants table matching the active vendor/user ID
       const { data: merchantData, error: merchantError } = await supabase
         .from('merchants')
         .select('*')
@@ -142,7 +212,6 @@ export default function VendorDashboard() {
         return;
       }
 
-      // Fallback to profiles table if merchants table record wasn't found directly
       const { data: profileData } = await supabase
         .from('profiles')
         .select('business_name, full_name, store_name')
@@ -207,18 +276,19 @@ export default function VendorDashboard() {
   }, [vendorProfile, fetchedMerchantName, userData, user]);
 
   const fetchOrders = useCallback(async () => {
-    if (!vendorProfile?.name && !vendorProfile?.id) return;
+    const activeVendorId = vendorProfile?.id || user?.id;
+    const activeVendorName = vendorProfile?.name || vendorProfile?.business_name || fetchedMerchantName;
+
+    if (!activeVendorId && !activeVendorName) return;
 
     try {
-      const vendorName = vendorProfile?.name || '';
-      const vendorId = vendorProfile?.id;
       const collected: any[] = [];
 
-      if (vendorId) {
+      if (activeVendorId) {
         const { data: byVendorId, error: vendorIdError } = await supabase
           .from('orders')
           .select('*')
-          .eq('vendor_id', vendorId)
+          .eq('vendor_id', activeVendorId)
           .order('created_at', { ascending: false });
 
         if (vendorIdError) {
@@ -228,11 +298,11 @@ export default function VendorDashboard() {
         }
       }
 
-      if (vendorName) {
+      if (activeVendorName) {
         const { data: byName, error: errName } = await supabase
           .from('orders')
           .select('*')
-          .eq('vendor_name', vendorName)
+          .eq('vendor_name', activeVendorName)
           .order('created_at', { ascending: false });
 
         if (errName) {
@@ -241,7 +311,6 @@ export default function VendorDashboard() {
           collected.push(...byName);
         }
       }
-
       const unique = Array.from(new Map(collected.map((o: any) => [o.id, o])).values());
       const userIds = Array.from(new Set(unique.map((o: any) => o.user_id).filter(Boolean)));
       let profiles: any[] = [];
@@ -269,22 +338,36 @@ export default function VendorDashboard() {
     } catch (e) {
       console.error('Fetch orders exception:', e);
     }
-  }, [vendorProfile?.id, vendorProfile?.name]);
+  }, [vendorProfile?.id, vendorProfile?.name, vendorProfile?.business_name, fetchedMerchantName, user?.id]);
 
   useEffect(() => {
     fetchOrders();
 
-    const channel = supabase.channel('realtime-orders')
+    const activeVendorId = vendorProfile?.id || user?.id || 'anonymous';
+    const channelName = `orders-realtime-${activeVendorId}-${Date.now()}`;
+
+    const channel = supabase.channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         fetchOrders();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('Realtime channel error encountered. Polling fallback active.');
+        }
+      });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchOrders]);
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
+  }, [fetchOrders, vendorProfile?.id, user?.id]);
 
   const handleStatusTransition = async (orderId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'Preparing' || currentStatus === 'Awaiting Payment' ? 'Ready to Meet Up' : 'Completed';
+    let nextStatus = 'Preparing';
+    if (currentStatus === 'Preparing') {
+      nextStatus = 'Ready to Meet Up';
+    } else if (currentStatus === 'Ready to Meet Up') {
+      nextStatus = 'Completed';
+    }
 
     let updateResult: any = null;
     if (vendorProfile?.id) {
@@ -313,13 +396,101 @@ export default function VendorDashboard() {
     }
 
     await fetchOrders();
-    Alert.alert('Status updated', 'The customer can now see the new order status.');
+    const alertMessage = nextStatus === 'Preparing' 
+      ? 'Order accepted. The customer has been notified that you are preparing their food.'
+      : nextStatus === 'Ready to Meet Up'
+      ? 'Order marked ready to meet up. Customer has been notified.'
+      : 'Order completed successfully.';
+    Alert.alert('Status updated', alertMessage);
   };
 
-  const activeOrders = orders.filter(o => o.status !== 'Completed');
+  const openRejectModal = (order: Order) => {
+    setSelectedOrderToReject(order);
+    setRejectionReasonInput('');
+    setRejectModalVisible(true);
+  };
+
+  const handleConfirmRejection = async () => {
+    if (!selectedOrderToReject) return;
+    if (!rejectionReasonInput.trim()) {
+      Alert.alert('Reason required', 'Please provide a reason for rejecting this order.');
+      return;
+    }
+
+    const orderId = selectedOrderToReject.id;
+    const reason = rejectionReasonInput.trim();
+
+    let updateResult: any = null;
+    if (vendorProfile?.id) {
+      updateResult = await supabase.from('orders').update({ 
+        status: 'Rejected', 
+        rejection_reason: reason 
+      }).eq('id', String(orderId)).eq('vendor_id', vendorProfile.id).select();
+    }
+
+    if (!updateResult || updateResult.error || !updateResult.data?.length) {
+      if (vendorProfile?.name) {
+        updateResult = await supabase.from('orders').update({ 
+          status: 'Rejected', 
+          rejection_reason: reason 
+        }).eq('id', String(orderId)).eq('vendor_name', vendorProfile.name).select();
+      }
+    }
+
+    if (updateResult?.error) {
+      console.error('Failed to reject order:', updateResult.error);
+      Alert.alert('Update failed', updateResult.error.message || 'Could not reject the order. Please try again.');
+      return;
+    }
+
+    if (!updateResult?.data?.length) {
+      const fallbackResult = await supabase.from('orders').update({ 
+        status: 'Rejected', 
+        rejection_reason: reason 
+      }).eq('id', String(orderId)).select();
+      if (fallbackResult.error) {
+        console.error('Failed to reject order:', fallbackResult.error);
+        Alert.alert('Update failed', fallbackResult.error.message || 'Could not reject the order. Please try again.');
+        return;
+      }
+    }
+
+    setRejectModalVisible(false);
+    setSelectedOrderToReject(null);
+    setRejectionReasonInput('');
+    await fetchOrders();
+    Alert.alert('Order Rejected', 'The order has been rejected and the customer has been notified with your reason.');
+  };
+
+  const activeOrders = orders.filter(o => o.status !== 'Completed' && o.status !== 'Rejected');
   const completedOrders = orders.filter(o => o.status === 'Completed');
   const totalSales = completedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
   const headerLabel = resolvedVendorName;
+
+  // Group active orders by cleaned pickup location, then by Batch Schedules
+  const groupedActiveOrders = useMemo(() => {
+    const map: { [landmark: string]: { [batch: string]: Order[] } } = {};
+    
+    activeOrders.forEach(order => {
+      const rawLandmark = order.pickup_point_id || order.pickupLandmark || order.pickup_landmark || 'Public Market Entrance';
+      
+      // Extract the slot match if it exists inside the raw location string
+      const slotMatch = rawLandmark.match(/\[Slot:\s*([^\]]+)\]/i);
+      const batch = slotMatch ? slotMatch[1].trim() : (order.pickupBatch || order.pickup_batch || 'Batch 1 (10:00 AM - 11:00 AM)');
+      
+      const landmark = cleanLocationText(rawLandmark);
+
+      if (!map[landmark]) {
+        map[landmark] = {};
+      }
+      if (!map[landmark][batch]) {
+        map[landmark][batch] = [];
+      }
+      map[landmark][batch].push(order);
+    });
+
+    return map;
+  }, [activeOrders]);
 
   return (
     <View style={styles.container}>
@@ -360,12 +531,12 @@ export default function VendorDashboard() {
             <Feather name="log-out" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         }
-        titleContainerStyle={{ alignItems: 'flex-start', justifyContent: 'center', width: '100%' }}
+        titleContainerStyle={styles.headerTitleContainer}
         style={{
           borderBottomWidth: 0,
           paddingTop: Platform.OS === 'android' ? 44 : 54,
           paddingBottom: 28,
-          paddingHorizontal: 20,
+          paddingHorizontal: 16,
           minHeight: 120,
           marginBottom: 10,
         }}
@@ -431,7 +602,35 @@ export default function VendorDashboard() {
 
         <Text style={styles.sectionTitle}>Live Queue</Text>
         {activeOrders.length > 0 ? (
-          activeOrders.map((order) => <CollapsibleOrderCard key={order.id} order={order} onStatusChange={handleStatusTransition} />)
+          Object.entries(groupedActiveOrders).map(([landmarkName, batches]) => (
+            <View key={landmarkName} style={styles.landmarkGroupContainer}>
+              {/* Landmark Header */}
+              <View style={styles.landmarkGroupHeader}>
+                <Ionicons name="location" size={16} color="#C2410C" />
+                <Text style={styles.landmarkGroupHeaderText}>{landmarkName}</Text>
+              </View>
+
+              {/* Batches under this Landmark */}
+              {Object.entries(batches).map(([batchName, batchOrders]) => (
+                <View key={batchName} style={styles.batchGroupContainer}>
+                  <View style={styles.batchGroupHeader}>
+                    <Feather name="clock" size={14} color="#64748B" />
+                    <Text style={styles.batchGroupHeaderText}>{batchName}</Text>
+                  </View>
+
+                  {/* Orders under this Batch & Landmark */}
+                  {batchOrders.map((order) => (
+                    <CollapsibleOrderCard 
+                      key={order.id} 
+                      order={order} 
+                      onStatusChange={handleStatusTransition} 
+                      onRejectPress={openRejectModal}
+                    />
+                  ))}
+                </View>
+              ))}
+            </View>
+          ))
         ) : (
           <View style={styles.emptyQueueContainer}>
             <MaterialCommunityIcons name="coffee-outline" size={48} color="#C2410C" />
@@ -440,49 +639,120 @@ export default function VendorDashboard() {
           </View>
         )}
       </ScrollView>
+
+      {/* REJECTION REASON MODAL */}
+      <Modal
+        visible={rejectModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setRejectModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reject Order</Text>
+              <TouchableOpacity onPress={() => setRejectModalVisible(false)}>
+                <Feather name="x" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Please provide a reason why this order is being rejected. This will be sent to the customer.
+            </Text>
+            
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="e.g., Ingredients out of stock, closed early..."
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={4}
+              value={rejectionReasonInput}
+              onChangeText={setRejectionReasonInput}
+              textAlignVertical="top"
+            />
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity 
+                style={styles.modalCancelBtn} 
+                activeOpacity={0.8}
+                onPress={() => setRejectModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.modalConfirmBtn} 
+                activeOpacity={0.8}
+                onPress={handleConfirmRejection}
+              >
+                <Text style={styles.modalConfirmText}>Confirm Rejection</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flex: 1, minWidth: 0, width: '100%' },
-  headerTextContainer: { alignItems: 'flex-start', flex: 1, minWidth: 0, marginRight: 12, width: '100%', flexShrink: 1 },
-  welcomeText: { color: 'rgba(255, 255, 255, 0.8)', fontSize: 11, fontWeight: '900', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 4 },
-  storeName: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', marginTop: 2, letterSpacing: -0.3, flexShrink: 1, maxWidth: '100%', width: '100%' },
-  logoutButton: { justifyContent: 'center', alignItems: 'center', padding: 10, minHeight: 40, minWidth: 40, backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)' },
-  approvalBadge: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  approvalBadgeText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
-  content: { padding: 20, paddingBottom: 40 },
-  statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  mainStat: { flex: 2, backgroundColor: '#FFFFFF', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#C2410C', shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-  mainStatValue: { fontSize: 24, fontWeight: '900', color: '#C2410C', letterSpacing: -0.3 },
-  mainStatLabel: { fontSize: 12, color: '#64748B', marginTop: 4, fontWeight: '700' },
-  sideStats: { flex: 1 },
-  smallStat: { flex: 1, padding: 15, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#C2410C', shadowColor: '#C2410C', shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
-  smallStatNum: { fontSize: 20, fontWeight: '900', color: '#FFF' },
-  smallStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.9)', fontWeight: '800', marginTop: 2, textTransform: 'uppercase' },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 16, marginTop: 10, letterSpacing: -0.3 },
-  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 28 },
-  toolItem: { alignItems: 'center', width: '48%', backgroundColor: '#FFFFFF', paddingVertical: 18, paddingHorizontal: 12, borderRadius: 24, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 14, shadowColor: '#C2410C', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
-  toolIcon: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  toolText: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
-  orderCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#C2410C', shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-  orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  orderID: { fontWeight: '900', color: '#1E293B', fontSize: 15, letterSpacing: -0.3 },
-  customerSub: { color: '#64748B', fontSize: 13, marginTop: 2, fontWeight: '600' },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
-  statusPillText: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  iconActionBtn: { backgroundColor: '#FFEDD5', padding: 8, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  itemSummary: { padding: 14, backgroundColor: '#F8FAFC', borderRadius: 16, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0' },
-  summaryText: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
-  summaryQty: { color: '#C2410C', fontWeight: '900' },
-  moreItemsText: { fontSize: 11, color: '#C2410C', marginTop: 6, fontWeight: '800' },
-  orderFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  orderTotalText: { fontSize: 18, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
-  actionBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 14, shadowColor: '#C2410C', shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
-  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
-  emptyQueueContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
-  emptyTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B', marginTop: 12, letterSpacing: -0.3 },
-  emptySubtitle: { fontSize: 13, color: '#64748B', marginTop: 4, fontWeight: '600' }
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  headerTitleContainer: { alignItems: 'flex-start', justifyContent: 'center', width: '100%', paddingLeft: 0, marginLeft: 0 },
+  headerRow: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', width: '100%', paddingLeft: 0, marginLeft: 0, paddingHorizontal: 0 },
+  headerTextContainer: { flex: 1, marginRight: 10, paddingLeft: 0, marginLeft: 0, alignItems: 'flex-start' },
+  welcomeText: { fontSize: 11, fontWeight: '700', color: '#FED7AA', letterSpacing: 1.2, marginBottom: 2, textAlign: 'left', marginLeft: 0 },
+  storeName: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', marginBottom: 6, textAlign: 'left', marginLeft: 0 },
+  logoutButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255, 255, 255, 0.2)', justifyContent: 'center', alignItems: 'center' },
+  approvalBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, marginLeft: 0 },
+  approvalBadgeText: { fontSize: 11, fontWeight: '700', textAlign: 'left' },
+  content: { paddingHorizontal: 16, paddingBottom: 40 },
+  statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 20, marginTop: 4 },
+  mainStat: { flex: 2, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  mainStatValue: { fontSize: 24, fontWeight: '800', color: '#0F172A', marginBottom: 2 },
+  mainStatLabel: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  sideStats: { flex: 1, justifyContent: 'space-between' },
+  smallStat: { flex: 1, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  smallStatNum: { fontSize: 20, fontWeight: '800', color: '#C2410C', marginBottom: 2 },
+  smallStatLabel: { fontSize: 11, fontWeight: '600', color: '#64748B' },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12, marginTop: 4, textAlign: 'left', marginLeft: 0, paddingHorizontal: 0 },
+  toolGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, paddingHorizontal: 0 },
+  toolItem: { alignItems: 'center', width: '18%' },
+  toolIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#FFF7ED', justifyContent: 'center', alignItems: 'center', marginBottom: 6, borderWidth: 1, borderColor: '#FFEDD5' },
+  toolText: { fontSize: 11, fontWeight: '600', color: '#334155', textAlign: 'center' },
+  landmarkGroupContainer: { marginBottom: 16, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  landmarkGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', justifyContent: 'flex-start', paddingLeft: 0, marginLeft: 0 },
+  landmarkGroupHeaderText: { fontSize: 15, fontWeight: '700', color: '#0F172A', textAlign: 'left' },
+  batchGroupContainer: { marginLeft: 0, marginBottom: 12 },
+  batchGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, justifyContent: 'flex-start', paddingLeft: 0, marginLeft: 0 },
+  batchGroupHeaderText: { fontSize: 13, fontWeight: '600', color: '#64748B', textAlign: 'left' },
+  orderCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  orderID: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  customerSub: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  iconActionBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center' },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
+  itemSummary: { backgroundColor: '#FFFFFF', padding: 8, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#F1F5F9' },
+  summaryText: { fontSize: 12, color: '#334155', marginBottom: 2 },
+  summaryQty: { fontWeight: '700', color: '#C2410C' },
+  moreItemsText: { fontSize: 11, color: '#64748B', fontStyle: 'italic', marginTop: 2 },
+  orderFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 },
+  orderTotalText: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  rejectBtnGrad: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' },
+  rejectBtnText: { fontSize: 12, fontWeight: '700', color: '#B91C1C' },
+  actionBtnGrad: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  actionBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  emptyQueueContainer: { padding: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginTop: 12, marginBottom: 4 },
+  emptySubtitle: { fontSize: 13, color: '#64748B', textAlign: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, width: '100%', maxWidth: 400, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  modalSubtitle: { fontSize: 13, color: '#64748B', marginBottom: 16 },
+  reasonInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 12, fontSize: 14, color: '#0F172A', height: 100, marginBottom: 20 },
+  modalActionRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#F1F5F9' },
+  modalCancelText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  modalConfirmBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#DC2626' },
+  modalConfirmText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
 });

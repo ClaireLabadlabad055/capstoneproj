@@ -8,6 +8,12 @@ import { useCart } from '../../context/CartContext';
 import { useVendor } from '../../context/VendorContext';
 import { supabase } from '../../lib/supabaseClient';
 
+const PICKUP_BATCHES = [
+  { id: '1', label: 'Batch 1', time: '10:00 AM – 11:00 AM', status: 'Available' },
+  { id: '2', label: 'Batch 2', time: '1:00 PM – 2:00 PM', status: 'Available' },
+  { id: '3', label: 'Batch 3', time: '3:00 PM – 4:00 PM', status: 'Almost Full' },
+];
+
 export default function Checkout() {
   const router = useRouter();
   const { cartItems, placeOrder } = useCart();
@@ -15,13 +21,12 @@ export default function Checkout() {
 
   const [paymentMethod, setPaymentMethod] = useState('COD');
   
-  // Pickup and Merchant Payment states
   const [pickupLandmarks, setPickupLandmarks] = useState<{ landmark: string; details: string }[]>([]);
   const [selectedPickup, setSelectedPickup] = useState<string>('');
   const [selectedPickupDetails, setSelectedPickupDetails] = useState<string>('');
+  const [selectedBatch, setSelectedBatch] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Merchant payment details fetched from database
   const [merchantName, setMerchantName] = useState('Toledo Fresh Hub');
   const [gcashName, setGcashName] = useState('');
   const [gcashNumber, setGcashNumber] = useState('');
@@ -71,7 +76,7 @@ export default function Checkout() {
             return normalizePickupOptions({ pickup_landmarks: parsed });
           }
         } catch (e) {
-          // fall through to the legacy single-value branch below
+          // fall through
         }
 
         return [{ landmark: trimmed, details: '' }];
@@ -107,8 +112,6 @@ export default function Checkout() {
         }
 
         if (merchant) {
-          console.log('Fetched merchant data:', merchant);
-
           const resolvedName = String(
             merchant.business_name ||
             merchant.name || 
@@ -181,7 +184,7 @@ export default function Checkout() {
   const safeCartItems: any[] = Array.isArray(cartItems) ? cartItems : [];
   const vendorsInCart = Array.from(new Set(safeCartItems.map((item: any) => String(item?.vendorName || 'Unknown'))));
   const subtotal = safeCartItems.reduce((sum: number, item: any) => sum + (Number(item?.price || 0) * (Number(item?.qty || 1))), 0);
-  const SERVICE_FEE_RATE = 0.05; // 5% service fee
+  const SERVICE_FEE_RATE = 0.05; 
   const serviceFee = Number((subtotal * SERVICE_FEE_RATE).toFixed(2));
   const total = Number((subtotal + serviceFee).toFixed(2));
 
@@ -196,12 +199,17 @@ export default function Checkout() {
       return;
     }
 
-    try {
-      const fullPickupString = selectedPickupDetails 
-        ? `${selectedPickup} (${selectedPickupDetails})` 
-        : selectedPickup;
+    if (!selectedBatch) {
+      Alert.alert('Selection Required', 'Please select a pick-up batch or schedule before proceeding.');
+      return;
+    }
 
-      const result = await placeOrder(fullPickupString, paymentMethod);
+    try {
+      const fullPickupString = `${selectedPickup}${selectedPickupDetails ? ` (${selectedPickupDetails})` : ''} [Slot: ${selectedBatch}]`;
+
+      // Pass status: 'Pending' or ensure your CartContext automatically inserts it
+      const result = await placeOrder(fullPickupString, paymentMethod, { status: 'Pending' });
+      
       if (result?.checkoutId) {
         if (result.success === false) {
           const errMsg = result.error?.message || String(result.error || 'Unknown');
@@ -221,7 +229,6 @@ export default function Checkout() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#451A03" />
 
-      {/* Styled Header matching HomeScreen Warm Gradient Theme */}
       <LinearGradient
         colors={['#451A03', '#7C2D12', '#C2410C']}
         style={styles.gradientHeader}
@@ -240,7 +247,6 @@ export default function Checkout() {
           <Text style={styles.sectionTitle}>Pick-up Point Option</Text>
           <Text style={styles.sectionSubTitle}>Select your preferred pickup location set by the merchant.</Text>
           
-          {/* DROPDOWN SELECTOR FOR MERCHANT PICKUP LOCATIONS */}
           <TouchableOpacity 
             style={styles.dropdownSelector} 
             activeOpacity={0.8}
@@ -260,7 +266,6 @@ export default function Checkout() {
             <Feather name={isDropdownOpen ? "chevron-up" : "chevron-down"} size={20} color="#64748B" />
           </TouchableOpacity>
 
-          {/* Dropdown Options List */}
           {isDropdownOpen && (
             <View style={styles.dropdownListContainer}>
               {pickupLandmarks.length > 0 ? (
@@ -302,8 +307,43 @@ export default function Checkout() {
               )}
             </View>
           )}
+        </View>
 
-          <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Payment Method</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Select Pick-up Batch / Schedule</Text>
+          <Text style={styles.sectionSubTitle}>Choose a designated time window for your order hand-off.</Text>
+
+          {PICKUP_BATCHES.map((batch) => {
+            const batchDisplayString = `${batch.label}: ${batch.time}`;
+            const isSelected = selectedBatch === batchDisplayString;
+            return (
+              <TouchableOpacity
+                key={batch.id}
+                style={[styles.batchCard, isSelected && styles.batchCardSelected]}
+                onPress={() => setSelectedBatch(batchDisplayString)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.batchInfo}>
+                  <View style={styles.batchRowTop}>
+                    <Text style={[styles.batchLabel, isSelected && styles.batchLabelSelected]}>
+                      {batch.label}
+                    </Text>
+                    <Text style={styles.batchStatus}>{batch.status}</Text>
+                  </View>
+                  <Text style={[styles.batchTime, isSelected && styles.batchTimeSelected]}>
+                    {batch.time}
+                  </Text>
+                </View>
+                <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
+                  {isSelected && <View style={styles.radioInner} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Payment Method</Text>
           <TouchableOpacity 
             activeOpacity={0.8}
             style={[styles.payOption, paymentMethod === 'COD' && styles.payOptionActive]}
@@ -391,7 +431,6 @@ export default function Checkout() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  
   gradientHeader: {
     height: 64,
     flexDirection: 'row',
@@ -405,139 +444,48 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  headerTitle: { 
-    fontSize: 18, 
-    fontWeight: '900', 
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  headerLeftAction: { 
-    padding: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  headerRightSpacer: {
-    width: 36,
-  },
-
+  headerTitle: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.3 },
+  headerLeftAction: { padding: 6, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)' },
+  headerRightSpacer: { width: 36 },
   scrollContent: { padding: 20, paddingBottom: Platform.OS === 'android' ? 220 : 260 },
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B', marginBottom: 4 },
   sectionSubTitle: { fontSize: 12, color: '#64748B', marginBottom: 12, fontWeight: '600', lineHeight: 16 },
-  
-  dropdownSelector: { 
-    backgroundColor: '#F8FAFC', 
-    padding: 16, 
-    borderRadius: 18, 
-    borderWidth: 1, 
-    borderColor: '#E2E8F0', 
-    flexDirection: 'row', 
-    alignItems: 'center',
-  },
+  dropdownSelector: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center' },
   dropdownSelectedText: { color: '#1E293B', fontWeight: '800', fontSize: 14 },
   dropdownSelectedSubText: { color: '#64748B', fontWeight: '600', fontSize: 11, marginTop: 2 },
-  
-  dropdownListContainer: {
-    marginTop: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  dropdownItemActive: {
-    backgroundColor: '#FFF7ED',
-  },
-  dropdownItemText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  dropdownItemTextActive: {
-    color: '#C2410C',
-  },
-  dropdownItemSubText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  emptyLandmarksBox: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  emptyLandmarksText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-
-  payOption: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#FFFFFF', 
-    padding: 16, 
-    borderRadius: 18, 
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-  },
-  payOptionActive: { 
-    borderColor: '#C2410C', 
-    borderWidth: 2, 
-    backgroundColor: '#FFF7ED' 
-  },
+  dropdownListContainer: { marginTop: 8, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8 },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  dropdownItemActive: { backgroundColor: '#FFF7ED' },
+  dropdownItemText: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  dropdownItemTextActive: { color: '#C2410C' },
+  dropdownItemSubText: { fontSize: 11, color: '#64748B', marginTop: 2, fontWeight: '600' },
+  emptyLandmarksBox: { padding: 16, alignItems: 'center' },
+  emptyLandmarksText: { fontSize: 12, color: '#94A3B8', textAlign: 'center', fontWeight: '600' },
+  batchCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', marginBottom: 10 },
+  batchCardSelected: { borderColor: '#C2410C', backgroundColor: '#FFF7ED', borderWidth: 2 },
+  batchInfo: { flex: 1, marginRight: 12 },
+  batchRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  batchLabel: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
+  batchLabelSelected: { color: '#C2410C' },
+  batchStatus: { fontSize: 11, color: '#059669', fontWeight: '700', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  batchTime: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  batchTimeSelected: { color: '#9A3412', fontWeight: '700' },
+  radioCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' },
+  radioCircleSelected: { borderColor: '#C2410C' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#C2410C' },
+  payOption: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 16, borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: '#F1F5F9', elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowOffset: { width: 0, height: 4 }, shadowRadius: 8 },
+  payOptionActive: { borderColor: '#C2410C', borderWidth: 2, backgroundColor: '#FFF7ED' },
   payText: { flex: 1, marginLeft: 15, fontWeight: '700', color: '#64748B', fontSize: 15 },
   payTextActive: { color: '#C2410C' },
-
-  qrContainer: { 
-    backgroundColor: '#FFFFFF', 
-    padding: 20, 
-    borderRadius: 24, 
-    marginTop: 15, 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderColor: '#E2E8F0',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-  },
+  qrContainer: { backgroundColor: '#FFFFFF', padding: 20, borderRadius: 24, marginTop: 15, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   qrWhiteBox: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 16, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9', width: 150, height: 150, justifyContent: 'center', alignItems: 'center' },
   customQrImage: { width: 130, height: 130, resizeMode: 'contain' },
   qrText: { fontSize: 13, color: '#64748B', marginBottom: 15, textAlign: 'center', fontWeight: '600' },
   vendorName: { marginTop: 15, fontWeight: '700', color: '#1E293B', fontSize: 14 },
   accountName: { fontSize: 13, fontWeight: '700', color: '#64748B', marginTop: 2 },
   accountNumber: { fontSize: 16, fontWeight: '900', color: '#C2410C', marginTop: 4 },
-
-  summaryCard: { 
-    backgroundColor: '#FFFFFF', 
-    padding: 22, 
-    borderRadius: 28, 
-    elevation: 12,
-    shadowColor: '#C2410C',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
+  summaryCard: { backgroundColor: '#FFFFFF', padding: 22, borderRadius: 28, elevation: 12, shadowColor: '#C2410C', shadowOpacity: 0.12, shadowRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
   summaryTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 18 },
   vendorGroup: { marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 12 },
   vendorGroupTitle: { fontWeight: '800', color: '#C2410C', fontSize: 13, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -547,33 +495,7 @@ const styles = StyleSheet.create({
   totalDivider: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 14 },
   totalLabel: { fontSize: 18, fontWeight: '900', color: '#1E293B' },
   totalValue: { fontSize: 24, fontWeight: '900', color: '#C2410C' },
-
-  footer: { 
-    padding: 20, 
-    paddingBottom: Platform.OS === 'android' ? 32 : 40, 
-    backgroundColor: '#FFFFFF', 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0,
-    borderTopWidth: 1,
-    borderColor: '#F1F5F9',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  placeOrderBtn: { 
-    paddingVertical: 16, 
-    borderRadius: 18, 
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    shadowColor: '#C2410C',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
+  footer: { padding: 20, paddingBottom: Platform.OS === 'android' ? 32 : 40, backgroundColor: '#FFFFFF', position: 'absolute', bottom: 0, left: 0, right: 0, borderTopWidth: 1, borderColor: '#F1F5F9', elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+  placeOrderBtn: { paddingVertical: 16, borderRadius: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', shadowColor: '#C2410C', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
   placeOrderText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
 });
